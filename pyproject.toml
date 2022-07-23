@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "gaia"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9, <3.11"
+
+
+[tool.poetry.group.dev.dependencies]
+isort = "^5.10.1"
+black = "^22.3.0"
+pylint = "^2.14.3"
+
+[tool.isort]
+profile = "black"
+lines_after_imports = 2
+line_length = 100
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
