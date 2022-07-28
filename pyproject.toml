@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"
 pytest = "^7.1.2"
+google-cloud-storage = "2.3.0"
 
 
 [tool.poetry.group.dev.dependencies]
