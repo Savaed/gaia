@@ -12,7 +12,7 @@ def create_nasa_url(
     data_fmt: str = "csv",
     select: Optional[list[str]] = None,
     query: Optional[str] = None,
-) -> list[str]:
+) -> str:
     """
     Create NASA HTTP URL for scalar data.
 
@@ -73,7 +73,10 @@ def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> list[str]:
         raise ValueError(f"'kepid' must be in range 1 to 999 999 999 inclusive, but got {kepid=}")
 
     fmt_kepid = f"{kepid:09}"
-    url = f"{base_url}?uri=mast:Kepler/url/missions/kepler/lightcurves/{fmt_kepid[:4]}/{fmt_kepid}//kplr{fmt_kepid}"
+    url = (
+        f"{base_url}?uri=mast:Kepler/url/missions/kepler/lightcurves/"
+        f"{fmt_kepid[:4]}/{fmt_kepid}//kplr{fmt_kepid}"
+    )
     return [f"{url}-{prefix}_{cadence.value}.fits" for prefix in get_quarter_prefixes(cadence)]
 
 

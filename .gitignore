@@ -118,3 +118,6 @@ outputs/
 
 # Pytest cache
 .pytest_cache
+
+# mypy cache
+.mypy_cache

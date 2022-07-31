@@ -1,3 +1,5 @@
+"""Basic I/O for Kepler data stored in various sources such as local or in the cloud."""
+
 import io
 import re
 from typing import AnyStr, Optional, Protocol
@@ -18,12 +20,12 @@ class DataIO(Protocol):
 
 
 class LocalIO:
-    def read(filename: str, mode: str = "rt") -> AnyStr:
-        with open(filename, mode) as f:
+    def read(self, filename: str, mode: str = "rt") -> AnyStr:
+        with open(filename, mode, encoding="utf-8") as f:
             return f.read()
 
-    def write(filename: str, data: AnyStr, mode: str = "wt") -> None:
-        with open(filename, mode) as f:
+    def write(self, filename: str, data: AnyStr, mode: str = "wt") -> None:
+        with open(filename, mode, encoding="utf-8") as f:
             f.write(data)
 
 
@@ -33,19 +35,19 @@ class GcpIO:
         try:
             data = blob.download_as_bytes()
         except googlex.NotFound:
-            raise FileNotFoundError(filename)
+            raise FileNotFoundError(filename) from None
         return data if mode[1] == "b" else data.decode()
 
     def write(self, filename: str, data: AnyStr, mode: str = "wt") -> None:
-        write_type, data_type = mode
+        write_type, data_type = mode[0], mode[1]
 
         # As GCP only allows writing a file, if the mode is 'append', the logic of
         # this operation must follow strategy: read an old file, concatenate old
         # file and 'data', write concatenated data to a 'filename' with 'w' mode.
         if write_type == "a":
             try:
-                old_data = self.read(filename, data, data_type, mode=f"r{data_type}")
-            except Exception:
+                old_data = self.read(filename, mode=f"r{data_type}")
+            except googlex.NotFound:
                 # File doesn't exist yet.
                 old_data = "" if data_type == "t" else b""
 
@@ -81,11 +83,10 @@ DATA_IO_GET_FNS = [check_path_gcp, check_path_local]
 
 def get_io(path: str) -> DataIO:
     for get_io_fn in DATA_IO_GET_FNS:
-        data_io = get_io_fn(path)
-        if data_io:
+        if data_io := get_io_fn(path):
             return data_io
-    else:
-        ValueError(f"Unsupported {path=}")
+
+    raise ValueError(f"Unsupported {path=}")
 
 
 def read(filename: str, mode: str = "rt") -> AnyStr:

@@ -268,7 +268,7 @@ def test_read_stellar_params__filter_kepid(mock_read_csv: Mock, star_df: pd.Data
     """Test check whether TCEs are filtered when specified `kepid`."""
     kepid = 1
     mock_read_csv.return_value = star_df
-    expected = expected = [
+    expected = [
         StellarParameters.from_dict(x.to_dict())
         for _, x in star_df.iterrows()
         if x["kepid"] == kepid

@@ -16,6 +16,8 @@ isort = "^5.10.1"
 black = "^22.3.0"
 pytest = "^7.1.2"
 pytest-cov = "^3.0.0"
+mypy = "^0.971"
+pylint = "^2.14.5"
 
 [tool.isort]
 profile = "black"
@@ -47,7 +49,9 @@ ignore_errors = true
         "too-many-arguments",
         "too-many-ancestors",
         "too-many-branches",
-        "too-many-locals"
+        "too-many-locals",
+        "missing-class-docstring",
+        "no-member"
     ]
 
     [tool.pylint.reports]       
@@ -55,6 +59,9 @@ ignore_errors = true
 
     [tool.pylint.spelling]
     spelling-store-unknown-words=false
+
+    [tool.pylint.design]
+    max-attributes=10
 
     [tool.pylint.similarities]  
     ignore-imports=false
@@ -87,6 +94,7 @@ ignore_errors = true
     single-line-if-stmt=false
     indent-after-paren=4
     expected-line-ending-format="LF"
+    good-names=["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "f"]
 
     [tool.pylint.imports]
     deprecated-modules=["regsub", "TERMIOS", "Bastion", "rexec"]

@@ -1,3 +1,5 @@
+"""Constants used throughout the project."""
+
 from gaia.enums import Cadence
 
 
@@ -49,6 +51,18 @@ SHORT_CADENCE_QUARTER_PREFIXES = {
 
 
 def get_quarter_prefixes(cadence: Cadence) -> list[str]:
+    """Get Kepler observation quarters prefixes for a specified cadence.
+
+    Parameters
+    ----------
+    cadence : Cadence
+        Observation cadence
+
+    Returns
+    -------
+    list[str]
+        Quarter prefixes (quarter start date)
+    """
     queraters = (
         SHORT_CADENCE_QUARTER_PREFIXES
         if cadence is Cadence.SHORT
