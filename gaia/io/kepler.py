@@ -1,17 +1,16 @@
 """DTO for Kepler time series stellar parameters and TCE scalar features."""
 
-import io
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import pandas as pd
+import tensorflow as tf
 from astropy.io import fits
 
 from gaia.constants import get_quarter_prefixes
 from gaia.data.models import TCE, KeplerData, StellarParameters, TimeSeries
 from gaia.enums import Cadence
-from gaia.io.core import read as mp_read
 
 
 class FitsFileError(Exception):
@@ -28,7 +27,7 @@ def _check_kepid(kepid: int) -> None:  # pylint: disable=missing-function-docstr
 
 
 def _read_csv_as_df(filename) -> pd.DataFrame:  # pylint: disable=missing-function-docstring
-    return pd.read_csv(io.BytesIO(mp_read(filename, mode="rb")))
+    return pd.read_csv(tf.io.gfile.GFile(filename))
 
 
 def get_kepler_filenames(data_dir: str, kepid: int, cadence: Cadence) -> list[str]:
@@ -81,7 +80,7 @@ def read_fits_as_dict(filename: str) -> dict[str, Any]:
         FITS file not found
     """
     try:
-        with fits.open(io.BytesIO(mp_read(filename))) as hdul:
+        with fits.open(tf.io.gfile.GFile(filename)) as hdul:
             time_series = hdul["LIGHTCURVE"]
             return {column.name: time_series.data[column.name] for column in time_series.columns}
     except FileNotFoundError:
@@ -238,3 +237,8 @@ class FilesLocations:
 
 def read_kepler_data(data_location: FilesLocations, kepid: int) -> KeplerData:
     raise NotImplementedError
+
+
+
+x = read_tce("gs://gaia-data-kepler/raw/tables/q1_q17_dr25_tce.csv")
+print()

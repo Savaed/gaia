@@ -51,31 +51,29 @@ def fixture_quarter_prefixes():
     return ["2009201121230", "2009231120729", "2009259162342"]
 
 
-@patch("gaia.io.kepler.mp_read")
-def test_read_fits_as_dict__missing_file(mock_read: Mock):
+@patch("gaia.io.kepler.tf.io.gfile.GFile")
+def test_read_fits_as_dict__missing_file(mock_gfile: Mock):
     """Test check whether FileNotFoundError is raised when a file is missing."""
-    mock_read.side_effect = FileNotFoundError()
+    mock_gfile.side_effect = FileNotFoundError()
 
     with pytest.raises(FileNotFoundError):
         read_fits_as_dict("test.fits")
 
 
-@patch("gaia.io.kepler.mp_read")
-def test_read_fits_as_dict__fits_reading_error(mock_read: Mock):
+@patch("gaia.io.kepler.tf.io.gfile.GFile")
+def test_read_fits_as_dict__fits_reading_error(mock_gfile: Mock):
     """Test check whether FitsFileError is raised when cannot read an existing FITS file."""
-    mock_read.side_effect = Exception()
+    mock_gfile.side_effect = Exception()
 
     with pytest.raises(FitsFileError):
         read_fits_as_dict("test.fits")
 
 
-@patch("gaia.io.kepler.mp_read")
-@patch("gaia.io.kepler.io.BytesIO")
+@patch("gaia.io.kepler.tf.io.gfile.GFile")
 @patch("gaia.io.kepler.fits.open")
 def test_read_fits_as_dist__fits_fields_mapping(
     mock_fits_open: Mock,
-    mock_io: Mock,
-    mock_read: Mock,
+    mock_gfile: Mock,
     fits_file: FitsFile,
 ):
     """Test check whether all read FITS file fields are mapped to dictionary keys."""
@@ -84,11 +82,10 @@ def test_read_fits_as_dist__fits_fields_mapping(
     assert set(result.keys()) == set(fits_file.fields)
 
 
-@patch("gaia.io.kepler.mp_read")
-@patch("gaia.io.kepler.io.BytesIO")
+@patch("gaia.io.kepler.tf.io.gfile.GFile")
 @patch("gaia.io.kepler.fits.open")
 def test_read_fits_as_dict__return_correct_dict(
-    mock_fits_open: Mock, mock_io: Mock, mock_read: Mock, fits_file: FitsFile
+    mock_fits_open: Mock, mock_gfile: Mock, fits_file: FitsFile
 ):
     """Test check whether a correct dictionary is returned after reading a FITS file"""
     mock_fits_open.return_value = fits_file.file
@@ -132,10 +129,10 @@ def test_read_tce__invalid_kepid(invalid_kepid: int):
         read_tce("test.csv", invalid_kepid)
 
 
-@patch("gaia.io.kepler.mp_read")
-def test_read_tce__missing_file(mock_read: Mock):
+@patch("gaia.io.kepler._read_csv_as_df")
+def test_read_tce__missing_file(mock_read_csv: Mock):
     """Test check whether FileNotFoundError is raised when a file is missing."""
-    mock_read.side_effect = FileNotFoundError()
+    mock_read_csv.side_effect = FileNotFoundError()
 
     with pytest.raises(FileNotFoundError):
         read_tce("test.csv")
