@@ -110,7 +110,7 @@ cython_debug/
 # Hydra default workdir
 outputs/
 
-# Project data 
+# Project data
 /data
 
 # Any application log files

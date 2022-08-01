@@ -9,7 +9,7 @@ import tensorflow as tf
 from astropy.io import fits
 
 from gaia.constants import get_quarter_prefixes
-from gaia.data.models import TCE, KeplerData, StellarParameters, TimeSeries
+from gaia.data.models import TCE, StellarParameters, TimeSeries
 from gaia.enums import Cadence
 
 
@@ -26,7 +26,7 @@ def _check_kepid(kepid: int) -> None:  # pylint: disable=missing-function-docstr
         raise ValueError(f"'kepid' must be in range 1 - 999 999 999 inclusive, but got {kepid=}")
 
 
-def _read_csv_as_df(filename) -> pd.DataFrame:  # pylint: disable=missing-function-docstring
+def _read_csv_as_df(filename: str) -> pd.DataFrame:  # pylint: disable=missing-function-docstring
     return pd.read_csv(tf.io.gfile.GFile(filename))
 
 
@@ -233,12 +233,3 @@ class FilesLocations:
     tce: str
     stellar: str
     time_series: str
-
-
-def read_kepler_data(data_location: FilesLocations, kepid: int) -> KeplerData:
-    raise NotImplementedError
-
-
-
-x = read_tce("gs://gaia-data-kepler/raw/tables/q1_q17_dr25_tce.csv")
-print()

@@ -6,8 +6,7 @@ authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.9, <3.11"
-google-cloud-storage = "2.3.0"
+python = ">= 3.9, <3.11"
 astropy = "^5.1"
 pandas = "^1.4.3"
 tensorflow = "^2.9.1"
@@ -27,20 +26,31 @@ line_length = 100
 
 [tool.black]
 line-length = 100
-target-version = ['py39']
+target-version = ["py39"]
 
-[tool.coverage.run]
-omit = ["*tests*", "gaia/data/models.py", "*enums.py*", "*constant[s]*"]
+[tool.coverage]
+    [tool.coverage.run]
+    omit = ["*tests*", "gaia/data/models.py", "*enums.py*", "*constant[s]*"]
 
-[tool.coverage.report]
-ignore_errors = true
+    [tool.coverage.report]
+    ignore_errors = true
+
+[tool.mypy]
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
+check_untyped_defs = true
+show_error_codes = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+exclude = ["tests/"]
 
 [tool.pylint]
     [tool.pylint.master]
-    ignore-paths=["test[s]"]
+    ignore-paths = ["test[s]"]
 
     [tool.pylint.messages_control]
-    disable= [
+    disable =  [
         "duplicate-code",
         "locally-disabled",
         "logging-format-interpolation",
@@ -55,59 +65,59 @@ ignore_errors = true
         "no-member"
     ]
 
-    [tool.pylint.reports]       
-    evaluation="10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)"
+    [tool.pylint.reports]
+    evaluation = "10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)"
 
     [tool.pylint.spelling]
-    spelling-store-unknown-words=false
+    spelling-store-unknown-words = false
 
     [tool.pylint.design]
-    max-attributes=10
+    max-attributes = 10
 
-    [tool.pylint.similarities]  
-    ignore-imports=false
+    [tool.pylint.similarities]
+    ignore-imports = false
 
     [tool.pylint.miscellaneous]
-    notes=["TODO", "FIXME", "BUG", "NOTE", "HACK", "REVIEW"]
+    notes = ["TODO", "FIXME", "BUG", "NOTE", "HACK", "REVIEW"]
 
     [tool.pylint.variables]
-    init-import=true
-    callbacks=["cb_" ,"_cb"]
+    init-import = true
+    callbacks = ["cb_" ,"_cb"]
 
     [tool.pylint.typecheck]
-    generated-members=["REQUEST", "acl_users", "aq_parent"]
+    generated-members = ["REQUEST", "acl_users", "aq_parent"]
 
     [tool.pylint.basic]
-    function-rgx="[a-z_][a-z0-9_]{2,50}$"
-    variable-rgx="[a-z_][a-z0-9_]{1,30}$"
-    const-rgx="(([A-Z_][A-Z0-9_]*)|(__.*__))$"
-    attr-rgx="[a-z_][a-z0-9_]{2,30}$"
-    argument-rgx="[a-z_][a-z0-9_]{2,30}$"
-    class-attribute-rgx="([A-Za-z_][A-Za-z0-9_]{2,30}|(__.*__))$"
-    inlinevar-rgx="[A-Za-z_][A-Za-z0-9_]*$"
-    class-rgx="[A-Z_][a-zA-Z0-9]+$"
-    module-rgx="(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$"
-    method-rgx="[a-z_][a-z0-9_]{2,30}$"
-    no-docstring-rgx="__.*__"
-    docstring-min-length=-1
+    function-rgx = "[a-z_][a-z0-9_]{2,50}$"
+    variable-rgx = "[a-z_][a-z0-9_]{1,30}$"
+    const-rgx = "(([A-Z_][A-Z0-9_]*)|(__.*__))$"
+    attr-rgx = "[a-z_][a-z0-9_]{2,30}$"
+    argument-rgx = "[a-z_][a-z0-9_]{2,30}$"
+    class-attribute-rgx = "([A-Za-z_][A-Za-z0-9_]{2,30}|(__.*__))$"
+    inlinevar-rgx = "[A-Za-z_][A-Za-z0-9_]*$"
+    class-rgx = "[A-Z_][a-zA-Z0-9]+$"
+    module-rgx = "(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$"
+    method-rgx = "[a-z_][a-z0-9_]{2,30}$"
+    no-docstring-rgx = "__.*__"
+    docstring-min-length = -1
 
     [tool.pylint.format]
-    single-line-if-stmt=false
-    indent-after-paren=4
-    expected-line-ending-format="LF"
-    good-names=["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "f"]
+    single-line-if-stmt = false
+    indent-after-paren = 4
+    expected-line-ending-format = "LF"
+    good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "f"]
 
     [tool.pylint.imports]
-    deprecated-modules=["regsub", "TERMIOS", "Bastion", "rexec"]
+    deprecated-modules = ["regsub", "TERMIOS", "Bastion", "rexec"]
 
     [tool.pylint.classes]
-    defining-attr-methods=["__init__", "__new__", "setUp"]
-    valid-classmethod-first-arg="cls"
-    valid-metaclass-classmethod-first-arg="mcs"
-    exclude-protected=["_asdict", "_fields", "_replace", "_source" ,"_make"]
+    defining-attr-methods = ["__init__", "__new__", "setUp"]
+    valid-classmethod-first-arg = "cls"
+    valid-metaclass-classmethod-first-arg = "mcs"
+    exclude-protected = ["_asdict", "_fields", "_replace", "_source" ,"_make"]
 
     [tool.pylint.exceptions]
-    overgeneral-exceptions="Exception"
+    overgeneral-exceptions = "Exception"
 
 [build-system]
 requires = ["poetry-core"]

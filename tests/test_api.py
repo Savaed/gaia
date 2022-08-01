@@ -1,7 +1,6 @@
 """Unit test for module `gaia.api.py`."""
 
 import re
-from typing import Any
 
 import pytest
 

@@ -132,5 +132,5 @@ class KeplerData:
     stellar_params: StellarParameters
     tces: list[TCE]
 
-    def __post_init__(self):
-        self.kepid = self.stellar_params.kepid
+    def __post_init__(self) -> None:
+        self.kepid = self.stellar_params.kepid  # type: ignore
