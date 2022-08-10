@@ -1,6 +1,10 @@
 """"REST API for MAST and NASA data archives."""
 
-from typing import Optional
+import re
+from dataclasses import dataclass
+from typing import AnyStr, Generator, Optional, Protocol
+
+import aiohttp
 
 from gaia.constants import get_quarter_prefixes
 from gaia.enums import Cadence
@@ -48,7 +52,7 @@ def create_nasa_url(
     return url
 
 
-def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> list[str]:
+def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> Generator[None, None, str]:
     """
     Create MAST HTTP URLs for time series.
 
@@ -77,25 +81,74 @@ def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> list[str]:
         f"{base_url}?uri=mast:Kepler/url/missions/kepler/lightcurves/"
         f"{fmt_kepid[:4]}/{fmt_kepid}//kplr{fmt_kepid}"
     )
-    return [f"{url}-{prefix}_{cadence.value}.fits" for prefix in get_quarter_prefixes(cadence)]
+    yield from (f"{url}-{prefix}_{cadence.value}.fits" for prefix in get_quarter_prefixes(cadence))
 
 
-# class BaseApi(Protocol):
-#     async def download(self, url: str) -> AnyStr:
-#         ...
+@dataclass(frozen=True)
+class InvalidRequestOrResponse(Exception):
+    """Raised when the request or response is invalid."""
+
+    error: str
+    msg: str
 
 
-# class MastApi:
-#     async def download(self, url: str) -> AnyStr:
-#         raise NotImplementedError
+class ApiError(Exception):
+    """
+    Raised when there is a serious API communication problem
+    other than just an invalid request or response.
+    """
 
 
-# class NasaApi:
-#     async def download(self, url: str) -> AnyStr:
-#         raise NotImplementedError
+class BaseApi(Protocol):
+    async def fetch(self, url: str) -> AnyStr:
+        ...
 
-#     def _split_url(self, url: str) -> dict[str, str]:
-#         pass
 
-#     def _validate_response(self, response: AnyStr) -> None:
-#         pass
+class MastApi:
+    async def fetch(self, url: str) -> AnyStr:
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(url, ssl=False, raise_for_status=True) as resp:
+                    response_body = await resp.read()
+                    return response_body
+        except (aiohttp.ClientResponseError, aiohttp.ClientPayloadError, aiohttp.InvalidURL) as ex:
+            # Mainly HTTP 404 NotFound - Kepler data is unavailable for a few quarters.
+            raise InvalidRequestOrResponse(f"HTTP {ex.status}", ex.message) from ex
+        except aiohttp.ServerConnectionError as ex:
+            raise ApiError(f"Unable to connect to {url=}. {ex}") from ex
+
+
+class NasaApi:
+    async def fetch(self, url: str) -> tuple[str, AnyStr]:
+        base_url, query_params = self._split_url(url)
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(base_url, params=query_params) as resp:
+                    table = await resp.read()
+        except Exception as ex:
+            raise ApiError(f"Cannot fetch table from {url=}. {ex}") from ex
+        self._validate_response(table)
+        return query_params.get("table"), table.decode("utf-8")
+
+    def _split_url(self, url: str) -> tuple[str, dict[str, str]]:
+        base_url, query = url.split("?")
+        params = {(p := param.split("="))[0]: p[1] for param in query.split("&")}
+        return base_url, params
+
+    def _validate_response(self, response: AnyStr) -> None:
+        if not response:
+            raise InvalidRequestOrResponse(error=None, msg="There is no response")
+
+        if isinstance(response, bytes):
+            response = response.decode("utf-8")
+
+        # Format of error response is 'ERROR<br>...'.
+        if response.startswith("ERROR<br>"):
+            error = (
+                re.search(r"(?<=Error Type: UserError - )(.+)", response)
+                .group(0)
+                .replace("<br>", "")
+                .strip()
+            )
+            error_msg = re.search(r"(?<=Message:)(.+)", response).group(0).strip()
+            raise InvalidRequestOrResponse(error=error, msg=error_msg)
