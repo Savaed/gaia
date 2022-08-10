@@ -1,13 +1,15 @@
 """DTO for Kepler time series, stellar parameters, events and TCE scalar features."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
+from gaia.enums import TceLabel, TceSpecificLabel
+
 
 @dataclass(frozen=True)
-class PeriodEvent:
+class PeriodicEvent:
     """An event that begins in an epoch has a duration and a period."""
 
     epoch: float
@@ -26,15 +28,19 @@ class TCE:
     """
 
     kepid: int
+    label: str
     tce_num: int
     """The number of observed TCE in the flux time series of a given target."""
-    event: PeriodEvent
+    event: PeriodicEvent
     opt_ghost_core_aperture_corr: float
     opt_ghost_halo_aperture_corr: float
     bootstrap_false_alarm_proba: float
     rolling_band_fgt: float
     radius: float
     fitted_period: float
+    label: TceLabel
+    specific_label: TceSpecificLabel
+    transit_depth: float
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "TCE":
@@ -51,12 +57,14 @@ class TCE:
         TCE
             TCE object based on dict data
         """
-        event = PeriodEvent(
-            epoch=data["tce_time0bk"], duration=data["tce_duration"], period=data["tce_period"]
+        event = PeriodicEvent(
+            epoch=data["tce_time0bk"], duration=data["tce_duration"] / 24, period=data["tce_period"]
         )
         return TCE(
-            kepid=data["kepid"],
-            tce_num=data["tce_plnt_num"],
+            label=data["label"],
+            specific_label=data["specific_label"],
+            kepid=int(data["kepid"]),
+            tce_num=int(data["tce_plnt_num"]),
             event=event,
             opt_ghost_core_aperture_corr=data["tce_cap_stat"],
             opt_ghost_halo_aperture_corr=data["tce_hap_stat"],
@@ -64,6 +72,7 @@ class TCE:
             rolling_band_fgt=data["tce_rb_tcount0"],
             radius=data["tce_prad"],
             fitted_period=data["tcet_period"],
+            transit_depth=data["tce_depth"],
         )
 
 
@@ -127,10 +136,7 @@ class KeplerData:
     This includes a target's time series, stellar features, and a list of TCE.
     """
 
-    kepid: int = field(init=False)
+    kepid: int
     time_series: dict[str, np.ndarray]
     stellar_params: StellarParameters
     tces: list[TCE]
-
-    def __post_init__(self) -> None:
-        self.kepid = self.stellar_params.kepid  # type: ignore
