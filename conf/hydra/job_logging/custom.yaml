@@ -1,0 +1,34 @@
+version: 1
+disable_existing_loggers: false
+
+# Custom attribute %(id)s in the format, specifies the log GUID.
+# Delete it if you don't want GUIDs in the log files.
+formatters:
+  standard:
+    format: "%(id)s %(asctime)s.%(msecs)03d [%(levelname)s] [%(threadName)s] %(name)s    %(message)s at <%(funcName)s, line %(lineno)d>"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  brief:
+    format: "%(asctime)s [%(levelname)s]    %(message)s %(name)s:%(funcName)s:%(lineno)d"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  minimal:
+    format: "%(asctime)s %(levelname)-7s %(message)s"
+filters:
+  guid:
+    (): gaia.utils.logs.LogGuidFilter
+
+handlers:
+  log_file:
+    class: logging.FileHandler
+    level: DEBUG
+    formatter: standard
+    filename: app.log
+    encoding: utf8
+    filters: [guid]
+  console:
+    class: rich.logging.RichHandler
+    log_time_format: "[%Y-%m-%d %H:%M:%S]"
+    level: INFO
+
+root:
+  level: DEBUG
+  handlers: [log_file, console]

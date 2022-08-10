@@ -7,17 +7,22 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">= 3.9, <3.11"
+aiohttp = "^3.8.1"
 astropy = "^5.1"
 pandas = "^1.4.3"
 tensorflow = "^2.9.1"
+rich = "^12.5.1"
+hydra-core = "^1.2.0"
 
 [tool.poetry.group.dev.dependencies]
-isort = "^5.10.1"
 black = "^22.3.0"
+isort = "^5.10.1"
+mypy = "^0.971"
+pre-commit = "^2.20.0"
+pylint = "^2.14.5"
 pytest = "^7.1.2"
 pytest-cov = "^3.0.0"
-mypy = "^0.971"
-pylint = "^2.14.5"
+pytest-mock = "^3.8.2"
 
 [tool.isort]
 profile = "black"
@@ -27,6 +32,9 @@ line_length = 100
 [tool.black]
 line-length = 100
 target-version = ["py39"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::RuntimeWarning", "ignore::DeprecationWarning"]
 
 [tool.coverage]
     [tool.coverage.run]
@@ -47,7 +55,7 @@ exclude = ["tests/"]
 
 [tool.pylint]
     [tool.pylint.master]
-    ignore-paths = ["test[s]"]
+    ignore-patterns = ["tests/.*"]
 
     [tool.pylint.messages_control]
     disable =  [
@@ -62,7 +70,8 @@ exclude = ["tests/"]
         "too-many-branches",
         "too-many-locals",
         "missing-class-docstring",
-        "no-member"
+        "no-member",
+        "logging-fstring-interpolation"
     ]
 
     [tool.pylint.reports]
