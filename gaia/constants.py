@@ -69,8 +69,8 @@ def get_quarter_prefixes(cadence: Cadence) -> list[str]:
         else LONG_CADENCE_QUARTER_PREFIXES
     )
 
-    prefs: list[str] = []
+    quarter_prefs: list[str] = []
     for prefs in queraters.values():
-        prefs.extend(prefs)
+        quarter_prefs.extend(prefs)
 
-    return prefs
+    return quarter_prefs
