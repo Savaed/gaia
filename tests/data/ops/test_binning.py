@@ -80,6 +80,26 @@ from gaia.data.ops.binning import bin_aggregate
             None,
             r"'x_min' must be less than 'x_max'.*",
         ),
+        (
+            np.array([1, 2, 3]),
+            np.array([1, 2, 3]),
+            2,
+            1,
+            4,
+            5,
+            None,
+            r"'x_min' must be less than or equal to the largest 'x' value.*",
+        ),
+        (
+            np.array([1]),
+            np.array([1]),
+            2,
+            None,
+            None,
+            None,
+            None,
+            r"The lenght of 'x' must be at least 2.*",
+        ),
     ],
     ids=[
         "len(x)_mismatch_len(y)",
@@ -89,12 +109,14 @@ from gaia.data.ops.binning import bin_aggregate
         "bin_width_is_zero",
         "bin_width_is_to_big",
         "x_min_greater_than_x_max",
+        "x_min_greater_than_the_largets_x_value",
+        "len(x)_less_than_2",
     ],
 )
 def test_bin_aggregate__invalid_inputs(
     x, y, num_bins, bin_width, x_min, x_max, aggr_fn, expected_error_msg
 ):
-    """Test check whether ValueError with proper message is raised when any of inputs is invalid."""
+    """Test check whether ValueError with the proper message is raised when any of inputs is invalid."""
     with pytest.raises(ValueError, match=expected_error_msg):
         bin_aggregate(
             x=x,
@@ -208,7 +230,7 @@ def test_bin_aggregate__mean_function(
 def test_bin_aggregate__median_function(
     x, y, num_bins, bin_width, x_min, x_max, expected_results, expected_bin_counts
 ):
-    """Test check whether a correct data is returned with aggregate values as means."""
+    """Test check whether a correct data is returned with aggregate values as medians."""
     results, bin_counts = bin_aggregate(
         x=x,
         y=y,
@@ -221,3 +243,25 @@ def test_bin_aggregate__median_function(
 
     assert_array_almost_equal(results, expected_results)
     assert_array_equal(bin_counts, expected_bin_counts)
+
+
+def test_bin_aggregate__default_parameters():
+    """Test check whether the correct data is returned when using default parameters."""
+    x = np.array([-4, -2, -2, 0, 0, 0, 2, 2, 2, 2, 3, 3, 3, 3, 3])
+    y = np.array([7, -1, 3, 4, 5, 6, 2, 2, 4, 4, 1, 1, 1, 1, -1])
+
+    result, bin_counts = bin_aggregate(x, y, num_bins=4)
+
+    assert_array_equal([7, 1, 5, 3], result)
+    assert_array_equal([1, 2, 3, 4], bin_counts)
+
+
+def test_bin_aggregate__empty_bin():
+    """Test check whether `0` is returned for an empty bin."""
+    x = np.array([-4, -2, -2, 0, 0, 0, 2, 2, 2, 2, 3, 3, 3, 3, 3])
+    y = np.array([7, -1, 3, 4, 5, 6, 2, 2, 4, 4, 1, 1, 1, 1, -1])
+
+    result, bin_counts = bin_aggregate(x, y, num_bins=5, bin_width=1.4)
+
+    assert_array_equal([7, 1, 5, 0, 3], result)
+    assert_array_equal([1, 2, 3, 0, 4], bin_counts)

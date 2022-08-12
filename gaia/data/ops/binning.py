@@ -5,17 +5,12 @@ from typing import Callable, Optional
 import numpy as np
 
 
-BinAggregateResult = tuple[np.ndarray, list[int]]
-AggregateFunction = Callable[[np.ndarray], np.ndarray]
+_BinAggregateResult = tuple[np.ndarray, list[int]]
+_AggregateFunction = Callable[[np.ndarray], np.ndarray]
 
 
 def _validate_bin_aggregate_inputs(
-    x: np.ndarray,
-    y: np.ndarray,
-    num_bins: int,
-    bin_width: float,
-    x_min: float,
-    x_max: float
+    x: np.ndarray, y: np.ndarray, num_bins: int, bin_width: float, x_min: float, x_max: float
 ) -> None:
     """
     Validate inputs of `an aggregate` function. Raise ValueError with a specific message when any
@@ -54,12 +49,14 @@ def _validate_bin_aggregate_inputs(
 def bin_aggregate(
     x: np.ndarray,
     y: np.ndarray,
+    *,
     num_bins: int,
+    default: float = 0.0,
     bin_width: Optional[float] = None,
     x_min: Optional[float] = None,
     x_max: Optional[float] = None,
-    aggr_fn: Optional[AggregateFunction] = np.nanmedian,
-) -> BinAggregateResult:
+    aggr_fn: Optional[_AggregateFunction] = None,
+) -> _BinAggregateResult:
     """Aggregate y-values in uniform intervals (bins) along the x-axis.
 
     The interval [x_min, x_max) is divided into `num_bins` uniformly spaced intervals of width
@@ -75,6 +72,8 @@ def bin_aggregate(
         N-dimensional numpy array with the same length as `x`. The 1D array is recommended to use
     num_bins : int
         The number of intervals to divide the x-axis into. Must be at least 2
+    default: float, optional
+        Default value to use for empty bins, by default 0.0
     bin_width : Optional[float], optional
         The width of each bin on the x-axis. Must be positive, and less than x_max - x_min.
         If `None` passed it is computed as `(x_max - x_min) / num_bins`, by default None
@@ -90,7 +89,7 @@ def bin_aggregate(
 
     Returns
     -------
-    BinAggregateResult
+    _BinAggregateResult
         results: numpy array of length `num_bins` containing the aggregated y-values of uniformly
             spaced bins on the x-axis.
         bin_counts: 1D numpy array of length `num_bins` indicating the number of y-values in each
@@ -132,6 +131,6 @@ def bin_aggregate(
     rigth_bin_edges = np.arange(x_min + bin_width, x_max + 10e-06, bin_spacing)
     bin_edges = zip(left_bin_edges, rigth_bin_edges)
     bins_masks = [np.logical_and(x >= left, x < rigth) for left, rigth in bin_edges]
-    results = np.array([aggr_fn(y[m], axis=0) for m in bins_masks])
+    results = np.array([aggr_fn(y[m], axis=0) if m.any() else default for m in bins_masks])
     bin_counts = np.count_nonzero(bins_masks, axis=1)
     return results, bin_counts
