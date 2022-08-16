@@ -3,7 +3,7 @@
 from enum import Enum, auto
 
 
-class Cadence(str, Enum):
+class Cadence(Enum):
     """Frequency of time series observations."""
 
     LONG = "llc"
