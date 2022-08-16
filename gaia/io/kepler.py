@@ -1,7 +1,10 @@
+"""IO operations for Kepler data that can be executed on local, AWS and GCP environments."""
+
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, AnyStr, Optional, Union
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 from astropy.io import fits
@@ -63,13 +66,17 @@ def get_kepler_filenames(data_dir: str, kepid: int, cadence: Cadence) -> list[st
     ]
 
 
-def read_fits_as_dict(filename: str) -> dict[str, Any]:
+def read_fits_as_dict(filename: str, remove_nans_from: Optional[set[str]] = None) -> dict[str, Any]:
     """Read time series from a FITS file as a dictionary with all fields mapped.
 
     Parameters
     ----------
     filename : str
         Location of a FITS file
+    remove_nans_from: Optional[set[str]], optional
+        Columns for which values will be returned only when there are finite for each column.
+        If any column has value[i] = NaN, then no value is returned for all columns at index i-th.
+        If `None`, then no such checking is performed and all values are returned, by default None
 
     Returns
     -------
@@ -86,11 +93,31 @@ def read_fits_as_dict(filename: str) -> dict[str, Any]:
     try:
         with fits.open(tf.io.gfile.GFile(filename, mode="rb")) as hdul:
             time_series = hdul["LIGHTCURVE"]
-            return {column.name: time_series.data[column.name] for column in time_series.columns}
+            data = {column.name: time_series.data[column.name] for column in time_series.columns}
     except NotFoundError as ex:
         raise FileNotFoundError(ex) from ex
     except Exception as ex:
         raise FitsFileError(f"Cannot read a file '{filename}'. {ex}") from ex
+
+    if remove_nans_from:
+        unsupported_fields = remove_nans_from - set(data)
+        if unsupported_fields:
+            fields = ", ".join(unsupported_fields)
+            raise ValueError(f"Unsupported FITS {fields=} passed to a 'remove_nans_from' parameter")
+
+        mask = np.ones_like(list(data.values())[0])
+        for field in remove_nans_from:
+            try:
+                mask = np.logical_and(mask, np.isfinite(data[field]))
+            except KeyError as ex:
+                raise ValueError(
+                    f"Field {ex} passed in 'remove_nans_from' not found in a FITS file"
+                ) from ex
+
+        for field in remove_nans_from:
+            data[field] = data[field][mask]
+
+    return data
 
 
 def pd_read_csv(filename: str) -> pd.DataFrame:
@@ -190,6 +217,7 @@ class KeplerReader:
                 "tce_rb_tcount0",
                 "tce_prad",
                 "tcet_period",
+                "tce_depth",
             ]
         ]
 
@@ -242,7 +270,12 @@ class KeplerReader:
         return StellarParameters.from_dict(df.to_dict("records")[0])
 
     def read_time_series(
-        self, *, kepid: int, cadence: Cadence, include: Optional[dict[str, str]] = None
+        self,
+        *,
+        kepid: int,
+        cadence: Cadence,
+        include: Optional[dict[str, str]] = None,
+        remove_nans_from: Optional[set[str]] = None,
     ) -> TimeSeries:
         """Read time series for a specific KOI.
 
@@ -256,6 +289,11 @@ class KeplerReader:
             A dictionary that tells which fields in the FITS file should be mapped to TimeSeries
             attributes. It must be {FITS field: TimeSeries attribute}. If `None`, all fields are
             mapped without renaming them, by default None
+        remove_nans_from: Optional[set[str]], optional
+            Columns for which values will be returned only when there are finite for each column.
+            If any column has value[i] = NaN, then no value is returned for all columns at index
+            i-th. If `None`, then no such checking is performed and all values are returned,
+            by default None
 
         Returns
         -------
@@ -275,7 +313,7 @@ class KeplerReader:
 
         for path in filenames:
             try:
-                file_ts = read_fits_as_dict(path)
+                file_ts = read_fits_as_dict(path, remove_nans_from)
             except FileNotFoundError:
                 # No file for a specific quarter
                 continue
@@ -299,9 +337,17 @@ class KeplerReader:
         return TimeSeries(kepid, data=time_series)
 
     def read_full_data(
-        self, *, kepid: int, cadence: Cadence, include: Optional[dict[str, str]] = None
+        self,
+        *,
+        kepid: int,
+        cadence: Cadence,
+        include: Optional[dict[str, str]] = None,
+        remove_nans: bool = True,
     ) -> KeplerData:
-        time_series = self.read_time_series(kepid=kepid, cadence=cadence, include=include)
+        remove_nans_from = set(include) if remove_nans and include else None
+        time_series = self.read_time_series(
+            kepid=kepid, cadence=cadence, include=include, remove_nans_from=remove_nans_from
+        )
         stellar_params = self.read_stellar_params(kepid=kepid)
         tces = self.read_tces(kepid=kepid)
         return KeplerData(
@@ -323,7 +369,7 @@ class KeplerReader:
 
         return TceLabel.FALSE_POSITIVE, TceSpecificLabel.NON_TRANSIT_PHENOMENON
 
-    def _get_koi_by_id_tce_num(self, kepid: int, tce_num: int):
+    def _get_koi_by_id_tce_num(self, kepid: int, tce_num: int) -> pd.DataFrame:
         return self.koi_df.loc[
             (self.koi_df["kepid"] == kepid) & (self.koi_df["koi_tce_plnt_num"] == tce_num)
         ]
