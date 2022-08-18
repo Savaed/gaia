@@ -357,7 +357,7 @@ class KeplerReader:
 
         for path in filenames:
             try:
-                file_ts = read_fits_as_dict(path, remove_nans_from, remove_nans_from)
+                file_ts = read_fits_as_dict(path, remove_nans_from)
             except FileNotFoundError:
                 # No file for a specific quarter
                 continue
