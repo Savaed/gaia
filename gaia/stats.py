@@ -104,7 +104,7 @@ def bic(k: int, n: int, sigma: float, ssr: float, penalty_coeff: float) -> float
     sigma : float
         Standard deviation
     ssr : float
-        Sum squere of residaulas
+        The sum of the squares of residuals
     penalty_coeff : float
         Penalty factor for the number of parameters. The lower the coefficient, the better the fit
         and the greater the chance of overfitting the model
@@ -112,7 +112,7 @@ def bic(k: int, n: int, sigma: float, ssr: float, penalty_coeff: float) -> float
     Returns
     -------
     float
-        Bayesian information criterion
+        Bayesian information criterion for the given parameters
     """
     # The following term is -2*ln(L), where L is the likelihood of the data given the model, under
     # the assumption that the model errors are iid Gaussian with mean 0 and std dev `sigma`.
