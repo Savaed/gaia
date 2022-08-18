@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-
 from gaia.enums import TceLabel, TceSpecificLabel
 
 
@@ -30,7 +28,6 @@ class TCE:
     kepid: int
     label: str
     tce_num: int
-    """The number of observed TCE in the flux time series of a given target."""
     event: PeriodicEvent
     opt_ghost_core_aperture_corr: float
     opt_ghost_halo_aperture_corr: float
@@ -57,6 +54,8 @@ class TCE:
         TCE
             TCE object based on dict data
         """
+        # duration=data["tce_duration"] / 24 because duration in CSV
+        # is in hours, but PeriodicEvent required durations in days
         event = PeriodicEvent(
             epoch=data["tce_time0bk"], duration=data["tce_duration"] / 24, period=data["tce_period"]
         )
@@ -85,12 +84,13 @@ class StellarParameters:
     radius: float
     mass: float
     density: float
-    surface_gravity: float  # log(g)
+    surface_gravity_log: float  # log(g)
     metallicity: float
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "StellarParameters":
-        """Create a StellarParameters object from a dict
+        """
+        Create a StellarParameters object from a dict
         (e.g. from pandas Series using `to_dict` method).
 
         Parameters
@@ -110,7 +110,7 @@ class StellarParameters:
             radius=data["radius"],
             mass=data["mass"],
             density=data["dens"],
-            surface_gravity=data["logg"],
+            surface_gravity_log=data["logg"],
             metallicity=data["feh"],
         )
 
@@ -137,6 +137,6 @@ class KeplerData:
     """
 
     kepid: int
-    time_series: dict[str, np.ndarray]
+    time_series: TimeSeries
     stellar_params: StellarParameters
     tces: list[TCE]
