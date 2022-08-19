@@ -1,6 +1,5 @@
 """Unit tests for `gaia.data.ops.time_series.py` module."""
 
-
 from dataclasses import dataclass
 
 import numpy as np
@@ -8,7 +7,12 @@ import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from gaia.data.models import PeriodicEvent
-from gaia.data.ops.time_series import _Segments, phase_fold_time, remove_events, split_arrays
+from gaia.data.ops.time_series import (
+    AdjustedPaddingRemoving,
+    phase_fold_time,
+    remove_events,
+    split_arrays,
+)
 
 
 @pytest.fixture(
@@ -34,13 +38,13 @@ def fixture_single_segment(request):
 
 @pytest.fixture(name="multi_segment")
 def fixture_multi_segment(single_segment):
-    def _fixture_multi_segment(n_segments):
+    def _fixture_multi_segment(num_segments):
         time, all_time_series, expected_time, expected_time_series = single_segment
         return (
-            n_segments * [time] if n_segments > 1 else time,
-            n_segments * [all_time_series] if n_segments > 1 else all_time_series,
-            n_segments * expected_time,
-            n_segments * expected_time_series,
+            num_segments * [time] if num_segments > 1 else time,
+            num_segments * [all_time_series] if num_segments > 1 else all_time_series,
+            num_segments * expected_time,
+            num_segments * expected_time_series,
         )
 
     return _fixture_multi_segment
@@ -48,48 +52,30 @@ def fixture_multi_segment(single_segment):
 
 @dataclass
 class SplitArraysTestCase:
-    n_features: int
-    n_segments: int
+    num_segments: int
 
 
 @pytest.fixture(
-    name="arrays_to_split",
-    params=[
-        SplitArraysTestCase(n_features=1, n_segments=1),
-        SplitArraysTestCase(n_features=1, n_segments=2),
-        SplitArraysTestCase(n_features=1, n_segments=3),
-        SplitArraysTestCase(n_features=2, n_segments=1),
-        SplitArraysTestCase(n_features=2, n_segments=2),
-        SplitArraysTestCase(n_features=2, n_segments=3),
-    ],
-    ids=[
-        "1_feature-1_segment",
-        "1_feature-2_segments",
-        "1_feature-3_segments",
-        "2_feature-1_segment",
-        "2_feature-2_segments",
-        "2_feature-3_segments",
-    ],
+    name="arrays_to_split", params=[1, 2, 3], ids=["1_segment", "2_segments", "3_segments"]
 )
 def fixture_arrays_to_split(request, multi_segment):
-    case: SplitArraysTestCase = request.param
-    time, all_time_series, expected_time, expected_time_series = multi_segment(case.n_segments)
-    features = tuple(all_time_series for _ in range(case.n_features))
+    num_segments = request.param
+    time, time_series, expected_time, expected_time_series = multi_segment(num_segments)
+    features = time_series
     return time, features, expected_time, expected_time_series
 
 
 def test_split_arrays__return_correct_data(arrays_to_split):
     """
-    Test check whether time and time series features are properly split or different input
-    configurations.
+    Test check whether time and time series features are
+    properly split or different input configurations.
     """
-    all_time, all_features, expected_time, expected_features = arrays_to_split
+    all_time, features, expected_time, expected_features = arrays_to_split
 
-    result_time, *result_ts = split_arrays(all_time, *all_features, gap_with=0.49)
+    result_time, result_ts = split_arrays(all_time, features, gap_with=0.49)
 
     assert_array_equal(result_time, expected_time)
-    for ts in result_ts:
-        assert_array_equal(ts, expected_features)
+    assert_array_equal(result_ts, expected_features)
 
 
 @pytest.mark.parametrize("gap_width", [-1.0, 0.0])
@@ -248,108 +234,64 @@ def fixture_time_to_fold(request):
 def test_phase_fold_time__return_correct_data(time_to_fold):
     """Test check whether the returned time is properly folded over an event phase."""
     time, expected, period, epoch = time_to_fold
-    result = phase_fold_time(time, epoch, period)
+    result = phase_fold_time(time, epoch=epoch, period=period)
     assert_array_almost_equal(result, expected)
 
 
-@pytest.mark.parametrize("time_to_fold", [PhaseFoldTestCase(data_type="simple")], indirect=True)
 def test_phase_fold_time__sort_folded_time(time_to_fold):
     """Test check whether a folded time is properly sort in ascending order."""
     time, expected, period, epoch = time_to_fold
     expected.sort()
 
-    result = phase_fold_time(time, epoch, period, sort=True)
+    result = phase_fold_time(time, epoch=epoch, period=period, sort=True)
 
     assert_array_almost_equal(result, expected)
 
 
 @pytest.mark.parametrize(
-    "all_time,all_ts,events,expected_time,expected_ts",
+    "all_time,series,events,expected_time,expected_ts",
     [
         (
             np.arange(20),
             10 * np.arange(20),
-            [PeriodicEvent(period=4, duration=1.5, epoch=3.5)],
-            [np.array([1, 2, 5, 6, 9, 10, 13, 14, 17, 18])],
-            [np.array([10, 20, 50, 60, 90, 100, 130, 140, 170, 180])],
+            [PeriodicEvent(period=4, duration=1, epoch=3)],
+            [np.array([1, 5, 9, 13, 17])],
+            [np.array([10, 50, 90, 130, 170])],
         ),
         (
             np.arange(20),
             10 * np.arange(20),
             [
-                PeriodicEvent(period=4, duration=1.5, epoch=3.5),
-                PeriodicEvent(period=7, duration=1.5, epoch=6.5),
+                PeriodicEvent(period=4, duration=1, epoch=3),
+                PeriodicEvent(period=7, duration=1, epoch=6),
             ],
-            [np.array([1, 2, 5, 9, 10, 17, 18])],
-            [np.array([10, 20, 50, 90, 100, 170, 180])],
+            [np.array([1, 9, 17])],
+            [np.array([10, 90, 170])],
         ),
         (
             [np.arange(10), np.arange(10, 20)],
             [np.arange(0, 100, 10), np.arange(100, 200, 10)],
             [
-                PeriodicEvent(period=4, duration=1.5, epoch=3.5),
-                PeriodicEvent(period=7, duration=1.5, epoch=6.5),
+                PeriodicEvent(period=4, duration=1, epoch=3),
+                PeriodicEvent(period=7, duration=1, epoch=6),
             ],
-            [np.array([1, 2, 5, 9]), np.array([10, 17, 18])],
-            [np.array([10, 20, 50, 90]), np.array([100, 170, 180])],
+            [np.array([1, 9]), np.array([17])],
+            [np.array([10, 90]), np.array([170])],
         ),
     ],
     ids=["one_segment_one_event", "one_segment_two_events", "two_segments_two_events"],
 )
-def test_remove_events__one_feature(all_time, all_ts, events, expected_time, expected_ts):
+def test_remove_events__one_feature(all_time, series, events, expected_time, expected_ts):
     """Test check whether events are properly removed with only one time series feature."""
-    result_time, result_ts = remove_events(all_time, events, f1=all_ts)
+    result_time, result_series = remove_events(
+        all_time, events, series, compute_removing_width=AdjustedPaddingRemoving()
+    )
 
-    for result, expetced in zip(result_time, expected_time):
-        assert_array_equal(result, expetced)
+    for res_time, exp_time in zip(result_time, expected_time):
+        assert_array_equal(res_time, exp_time)
 
-    for result, expetced in zip(result_ts, expected_ts):
-        assert_array_equal(result, expetced)
-
-
-@pytest.mark.parametrize(
-    "all_time,all_ts,events,expected_time,expected_ts",
-    [
-        (
-            np.arange(20),
-            10 * np.arange(20),
-            [PeriodicEvent(period=4, duration=1.5, epoch=3.5)],
-            [np.array([1, 2, 5, 6, 9, 10, 13, 14, 17, 18])],
-            [np.array([10, 20, 50, 60, 90, 100, 130, 140, 170, 180])],
-        ),
-        (
-            np.arange(20),
-            10 * np.arange(20),
-            [
-                PeriodicEvent(period=4, duration=1.5, epoch=3.5),
-                PeriodicEvent(period=7, duration=1.5, epoch=6.5),
-            ],
-            [np.array([1, 2, 5, 9, 10, 17, 18])],
-            [np.array([10, 20, 50, 90, 100, 170, 180])],
-        ),
-        (
-            [np.arange(10), np.arange(10, 20)],
-            [np.arange(0, 100, 10), np.arange(100, 200, 10)],
-            [
-                PeriodicEvent(period=4, duration=1.5, epoch=3.5),
-                PeriodicEvent(period=7, duration=1.5, epoch=6.5),
-            ],
-            [np.array([1, 2, 5, 9]), np.array([10, 17, 18])],
-            [np.array([10, 20, 50, 90]), np.array([100, 170, 180])],
-        ),
-    ],
-    ids=["one_segment_one_event", "one_segment_two_events", "two_segments_two_events"],
-)
-def test_remove_events__two_features(all_time, all_ts, events, expected_time, expected_ts):
-    """Test check whether events are properly removed with more than one time series feature."""
-    result_time, *result_ts = remove_events(all_time, events, f1=all_ts, f2=all_ts)
-
-    for result, expetced in zip(result_time, expected_time):
-        assert_array_equal(result, expetced)
-
-    for result_feature in result_ts:
-        for result, expetced in zip(result_feature, expected_ts):
-            assert_array_equal(result, expetced)
+    for res_ts, exp_ts in zip(result_series, expected_ts):
+        assert_array_equal(res_ts, exp_ts)
 
 
 @pytest.fixture(name="empty_segment")
@@ -385,17 +327,17 @@ def test_remove_events__handle_empty_segments(include_empty, empty_segment):
     Test check whether empty segments are included in the return value if
     `include_empty_segments` is true. Otherwise, it should not be included.
     """
-    all_time, all_ts, events, exp_time, exp_ts = empty_segment
-    result_time, result_ts = remove_events(
-        all_time, events, f1=all_ts, include_empty_segments=include_empty, width_factor=3
+    all_time, series, events, expected_time, expected_series = empty_segment
+    result_time, result_series = remove_events(
+        all_time,
+        events,
+        series,
+        include_empty_segments=include_empty,
+        compute_removing_width=AdjustedPaddingRemoving(),
     )
 
-    for result, expetced in zip(result_time, exp_time):
-        assert_array_equal(result, expetced)
+    for res_time, exp_time in zip(result_time, expected_time):
+        assert_array_equal(res_time, exp_time)
 
-    for result, expetced in zip(result_ts, exp_ts):
-        assert_array_equal(result, expetced)
-
-
-
-
+    for res_ts, exp_ts in zip(result_series, expected_series):
+        assert_array_equal(res_ts, exp_ts)

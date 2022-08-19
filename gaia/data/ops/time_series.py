@@ -11,15 +11,15 @@ _MultiDataSegments = tuple[list[np.ndarray], ...]
 _Segments = Union[list[np.ndarray], np.ndarray]
 
 
-def wrap_in_list(segments: _Segments) -> _Segments:
-    """Wraps numpy array in a list."""
+def wrap_in_list(segments: _Segments) -> Union[list[np.ndarray], np.ndarray]:
+    """Wrap numpy array in a list."""
     if isinstance(segments, np.ndarray) and segments.ndim == 1:
         return [segments]
     return segments
 
 
 def split_arrays(time: _Segments, series: _Segments, gap_with: float = 0.75) -> _MultiDataSegments:
-    """Split time series tables at gaps.
+    """Split time series at gaps.
 
     Accepts either a single time segment and time series segment or a list of such segments.
 
@@ -28,17 +28,16 @@ def split_arrays(time: _Segments, series: _Segments, gap_with: float = 0.75) -> 
     time : _Segments
         Time of observations. Single numpy array or a list of arrays
     series : _Segments
-        Time series associated with the `time` parameter. Single numpy array or a list of arrays
-
+        A sequence of time series features corresponding to the `time`. Single numpy array or a
+        list of arrays
     gap_with : float, optional
         Minimum time gap (in units of time) for split, by default 0.75
 
     Returns
     -------
     _MultiDataSegments
-        The tuple of the list of numpy arrays. The tuple is of the size of `series` size.
         Each tuple element is the list of splitted data sequence. The first element is
-        `all_time` followed by `series` elements.
+        `time` followed by `series`.
 
     Raises
     ------
@@ -48,16 +47,17 @@ def split_arrays(time: _Segments, series: _Segments, gap_with: float = 0.75) -> 
     if gap_with <= 0:
         raise ValueError(f"'gap_width' must be grater than zero, but got {gap_with=}'")
 
-    time = wrap_in_list(time)
-    out_ts = []
+    out_series = []
     out_time = []
+    time = wrap_in_list(time)
+    series = wrap_in_list(series)
     split_indicies = [np.argwhere(np.diff(t) > gap_with).flatten() + 1 for t in time]
 
     for time_segment, series_segment, split_indx in zip(time, series, split_indicies):
         out_time.extend(np.array_split(time_segment, split_indx))
-        out_ts.extend(np.array_split(series_segment, split_indx))
+        out_series.extend(np.array_split(series_segment, split_indx))
 
-    return out_time, out_ts
+    return out_time, out_series
 
 
 def phase_fold_time(
@@ -107,17 +107,21 @@ def phase_fold_time(
 
 
 class EventRemovingWidthStrategy(Protocol):
+    """Interface to compute time width for removing events."""
+
     def __call__(self, duration: float, period: float) -> float:
         ...
 
 
 class AdjustedPaddingRemoving:
+    """Compute the time width for removing events as `min(3 * duration, period)`."""
+
     def __call__(self, duration: float, period: float) -> float:
         return min(3 * duration, period)
 
 
 def remove_events(
-    all_time: _Segments,
+    time: _Segments,
     events: list[PeriodicEvent],
     series: _Segments,
     compute_removing_width: EventRemovingWidthStrategy,
@@ -133,27 +137,30 @@ def remove_events(
         A sequence of time values of observations. Single numpy array or a list of arrays
     events : list[PeriodicEvent]
         A list of events to remove
-    width_factor : float, optional
-        A fractional multiplier of the duration of each event to remove, by default 1.0
+    series: _Segments
+        A sequence of time series features corresponding to the `time`. Single numpy array or
+        a list of arrays
+    compute_removing_width: EventRemovingWidthStrategy
+        Implemenattaion of EventRemovingWidthStrategy interface. Specifies how to compute time
+        width for events removing
     include_empty_segments : bool, optional
         Whether to include empty segments in the output, by default True
 
     Returns
     -------
     _MultiDataSegments
-        The tuple of the list of numpy arrays. The tuple is of the size of `series` size + 1.
         Each tuple element is the list of numpy arrays with events removed.
-        The first element is `all_time` followed by `series` elements.
+        The first element is `time` followed by `series`.
     """
     if not events:
-        return all_time, series
+        return time, series
 
-    all_time = wrap_in_list(all_time)
+    time = wrap_in_list(time)
     series = wrap_in_list(series)
     out_time = []
     out_series = []
 
-    for time_segment, series_segment in zip(all_time, series):
+    for time_segment, series_segment in zip(time, series):
         mask = np.ones_like(time_segment)
 
         for event in events:
@@ -171,7 +178,7 @@ def remove_events(
 
 
 def interpolate_masked_spline(
-    all_time: _Segments, all_masked_time: _Segments, all_masked_splines: _Segments
+    time: _Segments, masked_time: _Segments, masked_splines: _Segments
 ) -> list[np.ndarray]:
     """Linearly interpolate spline values across masked points.
 
@@ -179,30 +186,32 @@ def interpolate_masked_spline(
 
     Parameters
     ----------
-    all_time : _Segments
+    time : _Segments
         A sequence of time values of observations. Single numpy array or a list of arrays
-    all_masked_time : _Segments
+    masked_time : _Segments
         A sequence of time values of observations with some values missing (masked). Single numpy
         array or a list of arrays
-    all_masked_splines : tuple[_Segments]
-        Masked spline values corresponding to `all_masked_time`. Each tuple element is a single
+    masked_splines : tuple[_Segments]
+        Masked spline values corresponding to `masked_time`. Each tuple element is a single
         numpy array or a list of arrays
 
     Returns
     -------
     _MultiDataSegments
-        The tuple of the list of numpy arrays. The tuple is of the size of `all_masked_splines`
+        The tuple of the list of numpy arrays. The tuple is of the size of `masked_splines`
         size. Each tuple element is the list of masked splines with missing points linearly
         interpolated.
     """
-    all_time = wrap_in_list(all_time)
-    all_masked_time = wrap_in_list(all_masked_time)
-    interp_splines = []
+    time = wrap_in_list(time)
+    masked_time = wrap_in_list(masked_time)
+    interpolations = []
+    segments = zip(time, masked_time, masked_splines)
 
-    for time, masked_time, masked_spline in zip(all_time, all_masked_time, all_masked_splines):
+    for time_segment, masked_time_segment, spline_segment in segments:
         if masked_time.size:
-            interp_splines.append(np.interp(time, masked_time, masked_spline))
+            interpolation_segment = np.interp(time_segment, masked_time_segment, spline_segment)
+            interpolations.append(interpolation_segment)
         else:
-            interp_splines.append(np.array([np.nan] * len(time)))
+            interpolations.append(np.array([np.nan] * len(time_segment)))
 
-    return interp_splines
+    return interpolations
