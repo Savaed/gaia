@@ -2,12 +2,13 @@
 
 import re
 from dataclasses import dataclass
-from typing import AnyStr, Generator, Optional, Protocol
+from typing import AnyStr, Generator, Optional
 
 import aiohttp
 
 from gaia.constants import get_quarter_prefixes
 from gaia.enums import Cadence
+from gaia.io.kepler import check_kepid
 
 
 def create_nasa_url(
@@ -52,7 +53,7 @@ def create_nasa_url(
     return url
 
 
-def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> Generator[None, None, str]:
+def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> Generator[str, None, None]:
     """
     Create MAST HTTP URLs for time series.
 
@@ -73,8 +74,7 @@ def get_mast_urls(base_url: str, kepid: int, cadence: Cadence) -> Generator[None
     if not base_url:
         raise ValueError("'base_url' cannot be empty")
 
-    if not 0 < kepid < 1_000_000_000:
-        raise ValueError(f"'kepid' must be in range 1 to 999 999 999 inclusive, but got {kepid=}")
+    check_kepid(kepid)
 
     fmt_kepid = f"{kepid:09}"
     url = (
@@ -99,27 +99,66 @@ class ApiError(Exception):
     """
 
 
-class BaseApi(Protocol):
-    async def fetch(self, url: str) -> AnyStr:
-        ...
-
-
 class MastApi:
-    async def fetch(self, url: str) -> AnyStr:
+    """REST API for fetching Kepler time series from Mikulski Archive for Space Telescopes."""
+
+    async def fetch(self, url: str) -> bytes:
+        """Fetch Kepler time series from Mikulski Archive for Space Telescopes (MAST).
+
+        See: https://archive.stsci.edu/missions-and-data/kepler/kepler-bulk-downloads
+
+        Parameters
+        ----------
+        url : str
+            HTTP url to the source time series file
+
+        Returns
+        -------
+        any
+            Fits file with time series as a binary file
+
+        Raises
+        ------
+        InvalidRequestOrResponse
+            In most cases, it indicates that is no file for a specified observation quarter
+        ApiError
+            Any communication error like server disconnection
+        """
         try:
             async with aiohttp.ClientSession() as sess:
                 async with sess.get(url, ssl=False, raise_for_status=True) as resp:
                     response_body = await resp.read()
                     return response_body
         except (aiohttp.ClientResponseError, aiohttp.ClientPayloadError, aiohttp.InvalidURL) as ex:
-            # Mainly HTTP 404 NotFound - Kepler data is unavailable for a few quarters.
+            # Mainly HTTP 404 NotFound - Kepler time series is unavailable for a few quarters.
             raise InvalidRequestOrResponse(f"HTTP {ex.status}", ex.message) from ex
         except aiohttp.ServerConnectionError as ex:
             raise ApiError(f"Unable to connect to {url=}. {ex}") from ex
 
 
 class NasaApi:
-    async def fetch(self, url: str) -> tuple[str, AnyStr]:
+    """REST API for fetching data tables from the official NASA archive."""
+
+    async def fetch(self, url: str) -> tuple[str, str]:
+        """Fetch data tables from NASA archives using the official REST API.
+
+        See: https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html
+
+        Parameters
+        ----------
+        url : str
+            HTTP url to the source table
+
+        Returns
+        -------
+        tuple[str, AnyStr]
+            Table name, table decoded as string
+
+        Raises
+        ------
+        ApiError
+            Any communication error like server disconnection
+        """
         base_url, query_params = self._split_url(url)
         try:
             async with aiohttp.ClientSession() as sess:
@@ -127,22 +166,34 @@ class NasaApi:
                     table = await resp.read()
         except Exception as ex:
             raise ApiError(f"Cannot fetch table from {url=}. {ex}") from ex
+
+        # Validate the response body because NASA API send HTTP 200 response even for errors
         self._validate_response(table)
         return query_params.get("table"), table.decode("utf-8")
 
     def _split_url(self, url: str) -> tuple[str, dict[str, str]]:
+        """Split url into base url and query parameters.
+
+        Example
+        -------
+            >>> self._split_url("http://www.url.com?x=1&y=2")
+            >>> ("http://www.url.com",  {"x": 1, "y":2})
+        """
         base_url, query = url.split("?")
-        params = {(p := param.split("="))[0]: p[1] for param in query.split("&")}
+        # Split query params into format of {"name": value}
+        # e.g. http://www.url.com?x=1&y=2 >> {"x": 1, "y":2}
+        params = {(param_part := param.split("="))[0]: param_part[1] for param in query.split("&")}
         return base_url, params
 
     def _validate_response(self, response: AnyStr) -> None:
+        """Validate NASA API response body."""
         if not response:
-            raise InvalidRequestOrResponse(error=None, msg="There is no response")
+            raise InvalidRequestOrResponse(error="NO_RESPONSE", msg="There is no response")
 
         if isinstance(response, bytes):
             response = response.decode("utf-8")
 
-        # Format of error response is 'ERROR<br>...'.
+        # Format of error response is 'ERROR<br>ErrorType:...<br>Message:...'
         if response.startswith("ERROR<br>"):
             error = (
                 re.search(r"(?<=Error Type: UserError - )(.+)", response)
