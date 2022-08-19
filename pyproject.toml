@@ -13,6 +13,10 @@ pandas = "^1.4.3"
 tensorflow = "^2.9.1"
 rich = "^12.5.1"
 hydra-core = "^1.2.0"
+matplotlib = "^3.5.3"
+seaborn = "^0.11.2"
+apache-beam = {extras = ["gcp"], version = "^2.40.0"}
+scikit-learn = "^1.1.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.3.0"
@@ -114,7 +118,7 @@ exclude = ["tests/"]
     single-line-if-stmt = false
     indent-after-paren = 4
     expected-line-ending-format = "LF"
-    good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "f"]
+    good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "f", "n", "_y", "_x"]
 
     [tool.pylint.imports]
     deprecated-modules = ["regsub", "TERMIOS", "Bastion", "rexec"]
