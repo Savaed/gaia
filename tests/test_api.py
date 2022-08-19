@@ -80,14 +80,16 @@ def test_create_nasa_url__valid_inputs(nasa_request):
 def test_get_mast_urls__empty_input(url):
     """If `base_url` is empty then it should raise ValueError."""
     with pytest.raises(ValueError):
-        get_mast_urls(url, 1, None)
+        # Use next() to force iterate through iterator and potentially raise the exception
+        next(get_mast_urls(url, 12, Cadence.LONG))
 
 
 @pytest.mark.parametrize("kepid", [-999, 0, 1_000_000_000])
 def test_get_mast_urls__invalid_kepid(kepid: int):
     """If `kepid` is less than 0 or greater than 999 999 999 then it should raise ValueError."""
     with pytest.raises(ValueError):
-        get_mast_urls("base_url", kepid, None)
+        # Use next() to force iterate through iterator and potentially raise the exception
+        next(get_mast_urls("base_url", kepid, Cadence.LONG))
 
 
 @pytest.mark.parametrize("cadence", [Cadence.LONG, Cadence.SHORT])
