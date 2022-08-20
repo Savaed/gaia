@@ -208,7 +208,7 @@ def interpolate_masked_spline(
     segments = zip(time, masked_time, masked_splines)
 
     for time_segment, masked_time_segment, spline_segment in segments:
-        if masked_time.size:
+        if masked_time_segment.size:
             interpolation_segment = np.interp(time_segment, masked_time_segment, spline_segment)
             interpolations.append(interpolation_segment)
         else:
