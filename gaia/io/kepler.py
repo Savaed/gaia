@@ -266,7 +266,7 @@ class KeplerReader:
             Missing required CSV column in a file
         """
         check_kepid(kepid)
-        tce_info = self.tce_df[self.tce_df["kepid"] == kepid, self._required_csv_tce_columns]
+        tce_info = self.tce_df[self.tce_df["kepid"] == kepid][self._required_csv_tce_columns]
 
         if tce_info.empty:
             raise MissingKOI(kepid)
