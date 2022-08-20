@@ -4,7 +4,7 @@ from typing import Optional, Protocol, Union
 
 import numpy as np
 
-from gaia.data.models import PeriodicEvent
+from gaia.data.models import TCE
 
 
 _MultiDataSegments = tuple[list[np.ndarray], ...]
@@ -109,22 +109,32 @@ def phase_fold_time(
 class EventRemovingWidthStrategy(Protocol):
     """Interface to compute time width for removing events."""
 
-    def __call__(self, duration: float, period: float) -> float:
+    def __call__(self, duration: float, period: float, secondary_phase: float) -> float:
         ...
 
 
-class AdjustedPaddingRemoving:
-    """Compute the time width for removing events as `min(3 * duration, period)`."""
+class AdjustedPadding:
+    """
+    Compute the time width for removing events as
+    `min(3 * duration, |weak secondary phase|, period)`.
+    """
+
+    def __call__(self, duration: float, period: float, secondary_phase: float) -> float:
+        return min(3 * duration, abs(secondary_phase), period)
+
+
+class SimpleRemoving:
+    """Compute the time width for removing events as `duration`."""
 
     def __call__(self, duration: float, period: float) -> float:
-        return min(3 * duration, period)
+        return duration
 
 
 def remove_events(
     time: _Segments,
-    events: list[PeriodicEvent],
+    tces: list[TCE],
     series: _Segments,
-    compute_removing_width: EventRemovingWidthStrategy,
+    compute_width_strategy: EventRemovingWidthStrategy,
     include_empty_segments: bool = True,
 ) -> _MultiDataSegments:
     """Remove events from a time series.
@@ -136,11 +146,12 @@ def remove_events(
     time : _Segments
         A sequence of time values of observations. Single numpy array or a list of arrays
     events : list[PeriodicEvent]
-        A list of events to remove
+        A list of TCEs. Each of them must contain PeriodicEvent object and weak secondary phase
+        attribute
     series: _Segments
         A sequence of time series features corresponding to the `time`. Single numpy array or
         a list of arrays
-    compute_removing_width: EventRemovingWidthStrategy
+    compute_width_strategy: EventRemovingWidthStrategy
         Implemenattaion of EventRemovingWidthStrategy interface. Specifies how to compute time
         width for events removing
     include_empty_segments : bool, optional
@@ -152,7 +163,7 @@ def remove_events(
         Each tuple element is the list of numpy arrays with events removed.
         The first element is `time` followed by `series`.
     """
-    if not events:
+    if not tces:
         return time, series
 
     time = wrap_in_list(time)
@@ -163,11 +174,13 @@ def remove_events(
     for time_segment, series_segment in zip(time, series):
         mask = np.ones_like(time_segment)
 
-        for event in events:
+        for tce in tces:
             transit_dist = np.abs(
-                phase_fold_time(time_segment, epoch=event.epoch, period=event.period)
+                phase_fold_time(time_segment, epoch=tce.event.epoch, period=tce.event.period)
             )
-            removing_width = compute_removing_width(event.duration, event.period)
+            removing_width = compute_width_strategy(
+                tce.event.duration, tce.event.period, tce.secondary_max_phase
+            )
             mask = np.logical_and(mask, transit_dist > 0.5 * removing_width)
 
         if include_empty_segments or mask.any():

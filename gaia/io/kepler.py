@@ -219,6 +219,7 @@ class KeplerReader:
             "tce_prad",
             "tcet_period",
             "tce_depth",
+            "tce_maxmesd",
         ]
 
     @property
@@ -266,7 +267,11 @@ class KeplerReader:
             Missing required CSV column in a file
         """
         check_kepid(kepid)
-        tce_info = self.tce_df[self.tce_df["kepid"] == kepid][self._required_csv_tce_columns]
+        try:
+            tce_info = self.tce_df[self.tce_df["kepid"] == kepid][self._required_csv_tce_columns]
+        except KeyError as ex:
+            bad_key = ex.args[0].split()[0].strip("[']")
+            raise KeyError(f"Required header '{bad_key}' not in TCE csv file") from ex
 
         if tce_info.empty:
             raise MissingKOI(kepid)

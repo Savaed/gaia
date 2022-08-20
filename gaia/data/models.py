@@ -38,6 +38,7 @@ class TCE:
     label: TceLabel
     specific_label: TceSpecificLabel
     transit_depth: float
+    secondary_max_phase: float
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "TCE":
@@ -72,6 +73,7 @@ class TCE:
             radius=data["tce_prad"],
             fitted_period=data["tcet_period"],
             transit_depth=data["tce_depth"],
+            secondary_max_phase=data["tce_maxmesd"],
         )
 
 
