@@ -19,6 +19,48 @@ class TimeSeriesViewType(Enum):
     """Phase view which provides more period-specific time series insight."""
 
 
+def norm_median_min(values: ScalarOrArray) -> ScalarOrArray:
+    """Normalize values using min-median normalization.
+
+    Normalization is as follow: `(x - median(x)) / abs(min(x))`
+
+    Parameters
+    ----------
+    values : ScalarOrArray
+        Values to normalize
+
+    Returns
+    -------
+    ScalarOrArray
+        Normalized values
+    """
+    return (values - np.median(values)) / np.abs(np.min(values))
+
+
+def norm_median_std(values: ScalarOrArray, stddev: Optional[ScalarOrArray] = None) -> ScalarOrArray:
+    """Normalize values using median-standard deviation normalization.
+
+    Normalization is as follow: `(x - median(x)) / std`
+
+    Parameters
+    ----------
+    values : ScalarOrArray
+        Values to normalize
+    std : Optional[ScalarOrArray], optional
+        Standard deviation to use in normalization. If None, the standard deviation will be computed
+        from `values` along the 0 axis, by default None
+
+    Returns
+    -------
+    ScalarOrArray
+        Normalized values
+    """
+    if stddev is None:
+        stddev = np.std(values, axis=0)
+
+    return (values - np.median(values)) / stddev
+
+
 class ViewGenerator:
     """Provides methods for generating time series views of the event."""
 
@@ -147,14 +189,3 @@ class ViewGenerator:
             else max(-self.period / 2, -self.duration * num_durations)
         )
         return {"bin_width": bin_width, "t_min": time_min, "t_max": time_max}
-
-
-# def norm_median_min(values: ScalarOrArray) -> ScalarOrArray:
-#     return (values - np.median(values)) / np.abs(np.min(values))
-
-
-# def norm_median_std(values: ScalarOrArray, std: Optional[float] = None) -> ScalarOrArray:
-#     if std is None:
-#         std = np.std(values)
-
-#     return (values - np.median(values)) / std
