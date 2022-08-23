@@ -42,7 +42,6 @@ def robust_mean(y: np.ndarray, sigma_cut: float) -> tuple[float, float, np.ndarr
         Boolean array with the same length as y. Values corresponding to outliers in y are False.
         All other values are True.
     """
-
     # Makke a robust estimate of the standard deviation of y, assuming y is normally distributed.
     # The conversion factor of 0.67449 takes the median absolute deviation (MAD) to the standard
     # deviation of a normal distribution. See the link belowe for mor info.

@@ -1,13 +1,18 @@
 """Functions for computing normalization splines for Kepler light curves."""
 
 import math
+from asyncio.log import logger
 from dataclasses import dataclass
 
 import numpy as np
+import structlog
 from scipy.interpolate import LSQUnivariateSpline
 from scipy.stats import median_abs_deviation
 
 from gaia.stats import bic, diffs, robust_mean
+
+
+logger = structlog.stdlib.get_logger()
 
 
 @dataclass
@@ -64,6 +69,15 @@ class KeplerSpline:
         list[np.ndarray]
             Best fitted b-splines for each time segment
         """
+        log = logger.bind()
+        log.info(
+            "Fit b-splines to time series",
+            knots_spacing=knots_spacing,
+            k=k,
+            maxiter=maxiter,
+            sigma_cut=sigma_cut,
+            penalty_coeff=penalty_coeff,
+        )
 
         if maxiter < 1:
             raise ValueError(f"'maxiter' must be at least 1, but got {maxiter=}")
@@ -77,20 +91,27 @@ class KeplerSpline:
         y_diffs = diffs(self._y, math.sqrt(2))
 
         if not y_diffs.size:
+            log.warning("No y-values provided. Return NaN values array with the same shape")
             return [np.array([np.nan] * len(y)) for y in self._y]
 
         sigma = median_abs_deviation(y_diffs, scale="normal")
 
-        for spacing in knots_spacing:
+        for iter_num, spacing in enumerate(knots_spacing):
             num_free_params = 0
             num_points = 0
             ssr = 0
             light_curve_mask = []
             spline = []
             bad_knots = False
-            no_points = False
 
-            for x, y in zip(self._x, self._y):
+            for segment_num, (x, y) in enumerate(zip(self._x, self._y)):
+                log = log.bind(iter_i=iter_num, segment_i=segment_num)
+
+                if not x.size:
+                    log.warning("Time segment is empty. Skip this segment")
+                    spline.append(np.array([]))
+                    continue
+
                 x_min = x.min()
                 x_max = x.max()
                 current_knots = np.arange(x_min + spacing, x_max, spacing)
@@ -99,13 +120,16 @@ class KeplerSpline:
                     spline_piece, mask = self._fit_segment(
                         x, y, knots=current_knots, k=k, maxiter=maxiter, sigma_cut=sigma_cut
                     )
-                except InsufficientPointsError:
+                except InsufficientPointsError as ex:
+                    # InsufficientPointsError raised when after removing outliers there are less
+                    #  poinst than neccesery to fit
+                    log.warning("Cannot fit time segment", ex_msg=ex)
                     spline.append(np.array([np.nan] * len(y)))
                     light_curve_mask.append(np.zeros_like(y, dtype=bool))
-                    no_points = True
                     continue
                 except SplineError:
                     # Current knots spacing led to the internal spline error. Skip this spacing
+                    log.warning("Knots spacing led to the internal spline error", spacing=spacing)
                     bad_knots = True
                     break
 
@@ -119,7 +143,9 @@ class KeplerSpline:
                 num_points += np.count_nonzero(mask)
                 ssr += np.sum((y[mask] - spline_piece[mask]) ** 2)
 
-            if bad_knots or no_points:
+            log = log.try_unbind("segment_i")
+            if bad_knots:
+                log.debug("Skipping current knots spacing", spacing=spacing)
                 continue
 
             current_bic = bic(
@@ -129,9 +155,11 @@ class KeplerSpline:
             if current_bic < best_bic or best_spline is None:
                 best_bic = current_bic
                 best_spline = spline
+                log.debug("Found new best-fit spline", bic=best_bic)
 
         if best_spline is None:
             # If cannot fit the spline return NaNs for all time segments
+            log.error("Cannot fit spline. Return NaN values for all time segments")
             best_spline = [np.array([np.nan] * y.size) for y in self._y]
 
         return best_spline

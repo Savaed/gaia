@@ -2,11 +2,14 @@
 
 import os
 
+import structlog
+
+from gaia.utils.logs import configure_logging
+
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import asyncio
-import logging
 import os
 from typing import Iterable
 
@@ -23,7 +26,7 @@ from gaia.utils.asynchronous import cancel_tasks, prepare_loop
 from gaia.utils.progress import ProgressBar
 
 
-log = logging.getLogger(__name__)
+log = structlog.stdlib.get_logger()
 
 
 def get_kepids(tce_filename: str) -> set[int]:
@@ -121,7 +124,7 @@ async def download_nasa_tables(urls: set[str], out_dir: str) -> None:
 
 
 async def async_main(cfg: BaseConfig) -> None:
-    # await download_nasa_tables(cfg.data.fetch.nasa_urls, cfg.data.tables_dir)
+    await download_nasa_tables(cfg.data.fetch.nasa_urls, cfg.data.tables_dir)
 
     kepids = get_kepids(cfg.data.tce_filename)
     mast_urls = get_kepler_urls(
@@ -147,4 +150,5 @@ def main(cfg: BaseConfig) -> None:
 
 
 if __name__ == "__main__":
+    configure_logging()
     main()

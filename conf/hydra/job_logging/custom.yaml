@@ -5,7 +5,7 @@ disable_existing_loggers: false
 # Delete it if you don't want GUIDs in the log files.
 formatters:
   standard:
-    format: "%(id)s %(asctime)s.%(msecs)03d [%(levelname)s] [%(threadName)s] %(name)s    %(message)s at <%(funcName)s, line %(lineno)d>"
+    format: "%(id)s %(asctime)s.%(msecs)03d [%(levelname)s] [%(threadName)s] %(name)s    %(message)s at <%(pathname)s:%(lineno)d in %(funcName)s()>"
     datefmt: "%Y-%m-%d %H:%M:%S"
   brief:
     format: "%(asctime)s [%(levelname)s]    %(message)s %(name)s:%(funcName)s:%(lineno)d"

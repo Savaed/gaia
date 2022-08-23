@@ -1,12 +1,12 @@
 """IO operations for Kepler data that can be executed on local, AWS and GCP environments."""
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, AnyStr, Optional, Union
 
 import numpy as np
 import pandas as pd
+import structlog
 import tensorflow as tf
 from astropy.io import fits
 from tensorflow.python.framework.errors import NotFoundError  # pylint: disable=no-name-in-module
@@ -16,7 +16,7 @@ from gaia.data.models import TCE, KeplerData, StellarParameters, TimeSeries
 from gaia.enums import Cadence, TceLabel, TceSpecificLabel
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.stdlib.get_logger()
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ def gfile_read(filename: str, all_lines: bool = False) -> Union[list[AnyStr], An
     Union[list[AnyStr], AnyStr]
         A list of all lines or file content as text (bytes or str)
     """
-    logger.info("Reading file='%s'", filename)
+    logger.info("Reading", file=filename)
     with tf.io.gfile.GFile(filename, "r") as gf:
         return gf.readlines() if all_lines else gf.read()
 
@@ -67,7 +67,7 @@ def gfile_write(filename: str, data: Any, append: bool = False) -> None:
         Whether to overwrite an existent content or append at the end of a file, by default False
     """
     mode = "a" if append else "w"
-    logger.info("Writing to a file='%s' with mode='%s'", filename, mode)
+    logger.info("Writing", file=filename, mode=mode)
     with tf.io.gfile.GFile(filename, mode) as gf:
         gf.write(data)
 
@@ -94,12 +94,7 @@ def get_kepler_filenames(data_dir: str, kepid: int, cadence: Cadence) -> list[st
     ValueError
         Parameter `kepid` is outside of the range 1-999 999 999
     """
-    logger.info(
-        "Generating Kepler filenames for KOI='%d', dir='%s', cadence='%s'",
-        kepid,
-        data_dir,
-        cadence.name,
-    )
+    logger.info("Generating Kepler filenames", kepid=kepid, dir=data_dir, cadence=cadence.name)
     check_kepid(kepid)
     return [
         f"{data_dir}/{kepid:09}/kplr{kepid:09}-{quarter_prefix}_{cadence.value}.fits"
@@ -133,21 +128,21 @@ def read_fits_as_dict(filename: str, remove_nans_from: Optional[set[str]] = None
     ValueError
         A key specified in `remove_nans_from` not found in the underlying FITS file columns
     """
-    logger.info("Reading FITS file, file='%s'", filename)
+    log = logger.bind()
+    log.info("Reading FITS file", file=filename)
     try:
         with fits.open(tf.io.gfile.GFile(filename, mode="rb")) as hdul:
             time_series = hdul["LIGHTCURVE"]
             data = {column.name: time_series.data[column.name] for column in time_series.columns}
-            logger.debug("Data extracted for columns='%s'", ", ".join(list(data.keys())))
+            log.debug("Data extracted", columns=list(data))
     except NotFoundError as ex:
         raise FileNotFoundError(ex) from ex
     except Exception as ex:
         raise FitsFileError(f"Cannot read a file '{filename}'. {ex}") from ex
 
     if remove_nans_from:
-        logger.info(
-            "Columns to remove NaNs from detected, columns='%s'", ", ".join(list(remove_nans_from))
-        )
+        log = log.bind(columns=list(remove_nans_from))
+        log.debug("Columns to remove NaNs from detected")
         # Detect fields which are not present in the underlying FITS file
         unsupported_fields = remove_nans_from - set(data)
         if unsupported_fields:
@@ -161,7 +156,7 @@ def read_fits_as_dict(filename: str, remove_nans_from: Optional[set[str]] = None
         for field in remove_nans_from:
             data[field] = data[field][mask]
 
-        logger.info("NaN values removed")
+        log.debug("NaN values removed")
     return data
 
 
@@ -178,7 +173,7 @@ def pd_read_csv(filename: str) -> pd.DataFrame:
     pd.DataFrame
         Pandas DataFrame
     """
-    logger.info("Reading CSV as pandas DataFrame, file='%s'", filename)
+    logger.info("Reading CSV as pandas DataFrame", file=filename)
     with tf.io.gfile.GFile(filename) as gf:
         return pd.read_csv(gf)
 
@@ -196,7 +191,7 @@ def check_kepid(kepid: int) -> None:
     ValueError
         Parameter `kepid` is outside of the range 1-999 999 999
     """
-    logger.debug("Validate KOI='%d'", kepid)
+    logger.debug("Validate Kepler ID", kepid=kepid)
     if not 0 < kepid < 1_000_000_000:
         raise ValueError(f"'kepid' must be in a range 1 - 999 999 999 inclusive, but got {kepid=}")
 
@@ -220,6 +215,8 @@ class KeplerReader:
         self.cfp_filename = cfp_filename
         self.koi_filename = koi_filename
         self.time_series_dir = time_series_dir
+
+        self.log = logger.new()
 
         self._tce_df: pd.DataFrame = None
         self._koi_df: pd.DataFrame = None
@@ -294,10 +291,11 @@ class KeplerReader:
         KeyError:
             Missing required CSV column in a file
         """
-        logger.info("Reading TCEs for KOI='%d' from file='%s'", kepid, self.tce_filename)
+        log = self.log.bind(kepid=kepid, tce_file=self.tce_filename)
+        log.info("Reading TCEs")
         check_kepid(kepid)
         try:
-            logger.debug("Retriving TCE columns='%s'", ", ".join(self._required_csv_tce_columns))
+            log.debug("Retriving required columns", columns=self._required_csv_tce_columns)
             tce_info = self.tce_df[self.tce_df["kepid"] == kepid][self._required_csv_tce_columns]
         except KeyError as ex:
             bad_key = ex.args[0].split()[0].strip("[']")
@@ -314,7 +312,7 @@ class KeplerReader:
             tce_dict["specific_label"] = specific_label
             tces.append(TCE.from_dict(tce_dict))
 
-        logger.info("%d TCE(s) found for KOI='%d'", len(tces), kepid)
+        log.info("TCE(s) found", tces_len=len(tces))
         return tces
 
     def read_stellar_params(self, *, kepid: int) -> StellarParameters:
@@ -341,9 +339,8 @@ class KeplerReader:
         KeyError:
             Missing required CSV column in a file
         """
-        logger.info(
-            "Reading stellar params for KOI='%d' from file='%s'", kepid, self.stellar_filename
-        )
+        self.log.info("Reading stellar params", kepid=kepid, stellar_file=self.stellar_filename)
+
         check_kepid(kepid)
         df = self.stellar_df.loc[self.stellar_df["kepid"] == kepid]
 
@@ -390,7 +387,8 @@ class KeplerReader:
         ValueError
             Parameter `kepid` is outside of the range 1-999 999 999
         """
-        logger.info("Reading time series for KOI='%d' from dir='%s'", kepid, self.time_series_dir)
+        log = self.log.bind(kepid=kepid, data_dir=self.time_series_dir)
+        log.info("Reading time series")
         check_kepid(kepid)
         filenames = get_kepler_filenames(self.time_series_dir, kepid, cadence)
         time_series = defaultdict(lambda: [])
@@ -400,11 +398,11 @@ class KeplerReader:
                 file_ts = read_fits_as_dict(path, remove_nans_from)
             except FileNotFoundError:
                 # No file for a specific quarter
-                logger.warning("FITS file='%s' not found", path)
+                self.log.warning("FITS file not found", file=path)
                 continue
 
             # Get attribute name from `include` or the original one. Skip if shold not be included
-            logger.debug("Map file fields. Maping config='%s'", include)
+            log.debug("Mapping file fields", fields_map=include)
             for ts_field, ts_data in file_ts.items():
                 if include is None:
                     mapped_key = ts_field
@@ -452,7 +450,7 @@ class KeplerReader:
             Full Kepler data which includes a target's time series, stellar features, and a list
             of TCE.
         """
-        logger.info("Reading full Kepler data for KOI='%d'", kepid)
+        self.log.info("Reading full Kepler data for KOI", kepid=kepid)
         remove_nans_from = set(include) if remove_nans and include else None
         time_series = self.read_time_series(
             kepid=kepid, cadence=cadence, include=include, remove_nans_from=remove_nans_from
@@ -465,7 +463,8 @@ class KeplerReader:
 
     def _get_tce_labels(self, kepid: int, tce_num: int) -> tuple[TceLabel, TceSpecificLabel]:
         """Determine TCE labels based on Certified False Positive (CFP) and KOI files."""
-        logger.debug("Determining TCE label for KOI='%d', TCE='%d'", kepid, tce_num)
+        log = self.log.bind(kepid=kepid, tce_num=tce_num)
+        log.debug("Determining TCE label")
         koi_tces = self._get_koi_by_id_tce_num(kepid, tce_num)
         label = TceLabel.FALSE_POSITIVE
         label_details = TceSpecificLabel.NON_TRANSIT_PHENOMENON
@@ -482,12 +481,11 @@ class KeplerReader:
                 label = TceLabel.FALSE_POSITIVE
                 label_details = TceSpecificLabel.ASTROPHYSICAL_FALSE_POSITIVE
 
-        logger.debug("TCE label='%s' for KOI='%d', tce_num='%d' found", label.name, kepid, tce_num)
+        log.debug("Found TCE label", label=label.name, detailed_label=label_details.name)
         return label, label_details
 
     def _get_koi_by_id_tce_num(self, kepid: int, tce_num: int) -> pd.DataFrame:
         """Get KOI data by KOI ID and the number of TCE."""
-        logger.debug("Retriving KOI data for KOI='%d', tce_num='%d'", kepid, tce_num)
         return self.koi_df.loc[
             (self.koi_df["kepid"] == kepid) & (self.koi_df["koi_tce_plnt_num"] == tce_num)
         ]

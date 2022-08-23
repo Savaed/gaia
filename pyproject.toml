@@ -17,6 +17,8 @@ matplotlib = "^3.5.3"
 seaborn = "^0.11.2"
 apache-beam = {extras = ["gcp"], version = "^2.40.0"}
 scikit-learn = "^1.1.2"
+numpy = "1.22.4"
+structlog = "^22.1.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.3.0"

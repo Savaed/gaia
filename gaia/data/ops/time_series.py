@@ -3,9 +3,12 @@
 from typing import Optional, Protocol, Union
 
 import numpy as np
+import structlog
 
 from gaia.data.models import TCE
 
+
+logger = structlog.stdlib.get_logger()
 
 _MultiDataSegments = tuple[list[np.ndarray], ...]
 _Segments = Union[list[np.ndarray], np.ndarray]
@@ -47,16 +50,19 @@ def split_arrays(time: _Segments, series: _Segments, gap_with: float = 0.75) -> 
     if gap_with <= 0:
         raise ValueError(f"'gap_width' must be grater than zero, but got {gap_with=}'")
 
+    log = logger.bind()
     out_series = []
     out_time = []
     time = wrap_in_list(time)
     series = wrap_in_list(series)
+    log.info("Split arrays x and y", num_arrays=len(time), gap_with=gap_with)
     split_indicies = [np.argwhere(np.diff(t) > gap_with).flatten() + 1 for t in time]
 
     for time_segment, series_segment, split_indx in zip(time, series, split_indicies):
         out_time.extend(np.array_split(time_segment, split_indx))
         out_series.extend(np.array_split(series_segment, split_indx))
 
+    log.info("Arrays splited successfuly", num_splited_arrays=len(out_time))
     return out_time, out_series
 
 
@@ -116,18 +122,11 @@ class EventRemovingWidthStrategy(Protocol):
 class AdjustedPadding:
     """
     Compute the time width for removing events as
-    `min(3 * duration, |weak secondary phase|, period)`.
+    `min(3 * duration, abs(weak secondary phase), period)`.
     """
 
     def __call__(self, duration: float, period: float, secondary_phase: float) -> float:
         return min(3 * duration, abs(secondary_phase), period)
-
-
-class SimpleRemoving:
-    """Compute the time width for removing events as `duration`."""
-
-    def __call__(self, duration: float, period: float) -> float:
-        return duration
 
 
 def remove_events(
@@ -163,7 +162,10 @@ def remove_events(
         Each tuple element is the list of numpy arrays with events removed.
         The first element is `time` followed by `series`.
     """
+    log = logger.bind()
+    log.info("Removing events from time series", width_strategy=compute_width_strategy)
     if not tces:
+        log.warning("No events provided. Return unchanged 'time', 'series'")
         return time, series
 
     time = wrap_in_list(time)
@@ -175,18 +177,17 @@ def remove_events(
         mask = np.ones_like(time_segment)
 
         for tce in tces:
-            transit_dist = np.abs(
-                phase_fold_time(time_segment, epoch=tce.event.epoch, period=tce.event.period)
-            )
-            removing_width = compute_width_strategy(
-                tce.event.duration, tce.event.period, tce.secondary_max_phase
-            )
-            mask = np.logical_and(mask, transit_dist > 0.5 * removing_width)
+            event = tce.event
+            folded_time = phase_fold_time(time_segment, epoch=event.epoch, period=event.period)
+            transit_dist = np.abs(folded_time)
+            rm_width = compute_width_strategy(event.duration, event.period, tce.secondary_max_phase)
+            mask = np.logical_and(mask, transit_dist > 0.5 * rm_width)
 
         if include_empty_segments or mask.any():
             out_time.append(time_segment[mask])
             out_series.append(series_segment[mask])
 
+    log.info(f"{len(tces)} events {'masked' if include_empty_segments else 'removed'}")
     return out_time, out_series
 
 
@@ -210,11 +211,11 @@ def interpolate_masked_spline(
 
     Returns
     -------
-    _MultiDataSegments
-        The tuple of the list of numpy arrays. The tuple is of the size of `masked_splines`
-        size. Each tuple element is the list of masked splines with missing points linearly
-        interpolated.
+    list[np.ndarray]
+        The list of masked splines with missing points linearly interpolated.
     """
+    log = logger.bind()
+    log.info("Linearly interpolate masked spline")
     time = wrap_in_list(time)
     masked_time = wrap_in_list(masked_time)
     interpolations = []
@@ -225,6 +226,7 @@ def interpolate_masked_spline(
             interpolation_segment = np.interp(time_segment, masked_time_segment, spline_segment)
             interpolations.append(interpolation_segment)
         else:
+            log.warning("Empty masked time segment. Interpolate with NaNs")
             interpolations.append(np.array([np.nan] * len(time_segment)))
 
     return interpolations

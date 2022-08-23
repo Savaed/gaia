@@ -2,12 +2,13 @@
 
 import asyncio
 import functools
-import logging
 import signal
 from typing import Any, Callable, Optional, Union
 
+import structlog
 
-log = logging.getLogger(__name__)
+
+log = structlog.stdlib.get_logger()
 
 
 async def shutdown(
@@ -59,7 +60,7 @@ def handle_exception(
     """
     # context["message"] will always be there, but context["exception"] may not
     msg = context.get("exception", context["message"])
-    log.error(f"Caught exception: {msg}")
+    log.error(f"Caught exception on asyncio loop: {msg}", loop=loop)
 
     if callback:
         asyncio.create_task(callback())
@@ -102,11 +103,13 @@ def prepare_loop(
         loop.add_signal_handler(
             exit_signal, lambda s=exit_signal: asyncio.create_task(shutdown(loop, s))
         )
+    log.info("Asyncio signal handlers set", signals=exit_signals)
 
     if exception_handler:
         loop.set_exception_handler(functools.partial(exception_handler, *args))
     else:
         loop.set_exception_handler(handle_exception)
+    log.info("Asyncio exception handlers set")
 
 
 async def cancel_tasks(tasks: list[Union[asyncio.Future, asyncio.Task]]) -> None:
@@ -117,8 +120,8 @@ async def cancel_tasks(tasks: list[Union[asyncio.Future, asyncio.Task]]) -> None
     tasks : list[Union[asyncio.Future, asyncio.Task]]
         Tasks to cancel
     """
-    log.debug(f"Cancelling {len(tasks)} tasks")
+    log.info("Cancelling outstanding tasks")
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    log.debug("Tasks cencelled")
+    log.info(f"{len(tasks)} tasks cencelled")

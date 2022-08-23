@@ -3,7 +3,10 @@
 from typing import Callable, Optional
 
 import numpy as np
+import structlog
 
+
+log = structlog.stdlib.get_logger()
 
 _BinAggregateResult = tuple[np.ndarray, list[int]]
 _AggregateFunction = Callable[[np.ndarray], np.ndarray]
@@ -13,9 +16,10 @@ def _validate_bin_aggregate_inputs(
     x: np.ndarray, y: np.ndarray, num_bins: int, bin_width: float, x_min: float, x_max: float
 ) -> None:
     """
-    Validate inputs of `an aggregate` function. Raise ValueError with a specific message when any
+    Validate inputs of `bin_aggregate` function. Raise ValueError with a specific message when any
     one of the inputs is invalid.
     """
+    log.debug("Validate bin_aggregate() inputs")
     if any(np.diff(x) < 0):
         raise ValueError("'x' must be sorted in ascending order")
 
@@ -110,6 +114,7 @@ def bin_aggregate(
         - `x_min` is greater than the largest value of `x`
         - `bin_width` not satify a condition 0 < bin_width < x_max - x_min
     """
+    log.info("Bin and aggregate x, y, values")
     if x_min is None:
         x_min = x.min()
 
@@ -118,9 +123,11 @@ def bin_aggregate(
 
     if bin_width is None:
         bin_width = abs(x_max - x_min) / num_bins
+        log.debug("Parameter 'bin_width' set to default value %f")
 
     if not aggr_fn:
         aggr_fn = np.nanmedian
+        log.debug("Parameter 'aggr_fn' set to default value np.nanmedian")
 
     _validate_bin_aggregate_inputs(
         x=x, y=y, num_bins=num_bins, bin_width=bin_width, x_min=x_min, x_max=x_max
@@ -131,6 +138,7 @@ def bin_aggregate(
     rigth_bin_edges = np.arange(x_min + bin_width, x_max + 10e-06, bin_spacing)
     bin_edges = zip(left_bin_edges, rigth_bin_edges)
     bins_masks = [np.logical_and(x >= left, x < rigth) for left, rigth in bin_edges]
+    log.debug("Applying aggregation function to bins", aggr_fn=aggr_fn)
     results = np.array([aggr_fn(y[m], axis=0) if m.any() else default for m in bins_masks])
     bin_counts = np.count_nonzero(bins_masks, axis=1)
     return results, bin_counts

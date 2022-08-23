@@ -4,7 +4,10 @@ from enum import Enum, auto
 from typing import Any, Callable, Optional, Union
 
 import numpy as np
+import structlog
 
+
+log = structlog.stdlib.get_logger()
 
 ScalarOrArray = Union[np.ndarray, float, int]
 
@@ -34,6 +37,7 @@ def norm_median_min(values: ScalarOrArray) -> ScalarOrArray:
     ScalarOrArray
         Normalized values
     """
+    log.info("Normalize values", norm_type="median_min")
     return (values - np.median(values)) / np.abs(np.min(values))
 
 
@@ -47,16 +51,21 @@ def norm_median_std(values: ScalarOrArray, stddev: Optional[ScalarOrArray] = Non
     values : ScalarOrArray
         Values to normalize
     std : Optional[ScalarOrArray], optional
-        Standard deviation to use in normalization. If None, the standard deviation will be computed
-        from `values` along the 0 axis, by default None
+        Standard deviation to use in normalization. If None, the standard deviation will be
+        computed from `values` along the 0 axis, by default None
 
     Returns
     -------
     ScalarOrArray
         Normalized values
     """
+    log.info("Normalize values", norm_type="median_min")
     if stddev is None:
         stddev = np.std(values, axis=0)
+        log.debug(
+            "'stddev' not provided. Using standard deviation computed from 'x' along 0 axis",
+            stddev=stddev,
+        )
 
     return (values - np.median(values)) / stddev
 
@@ -162,6 +171,13 @@ class ViewGenerator:
         np.ndarray
             A view of the time series created for the specific event
         """
+        log.info(
+            "Generate time series view",
+            kind=kind.name,
+            bins=num_bins,
+            width_factor=bin_width_factor,
+            norm_fn=norm_fn,
+        )
         num_durations = kwargs.pop("num_durations", 2.5)  # Currently used only for a local view
         view_params = self._get_view_params(kind, num_bins, bin_width_factor, num_durations)
         return self._generate_view(num_bins=num_bins, norm_fn=norm_fn, **view_params)
@@ -172,7 +188,6 @@ class ViewGenerator:
         """Get view-specific parameters."""
         # TODO: Probably to refactor in some free time.
         # Those params are hard-coded and cannot be extended in easy way.
-
         bin_width = (
             max(self.period / num_bins, bin_width_factor * self.duration)
             if kind is TimeSeriesViewType.GLOBAL
@@ -188,4 +203,6 @@ class ViewGenerator:
             if kind is TimeSeriesViewType.GLOBAL
             else max(-self.period / 2, -self.duration * num_durations)
         )
-        return {"bin_width": bin_width, "t_min": time_min, "t_max": time_max}
+        params = {"bin_width": bin_width, "t_min": time_min, "t_max": time_max}
+        log.debug("View parameters determined", params=params)
+        return params
