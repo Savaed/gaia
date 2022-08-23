@@ -1,6 +1,7 @@
 """Schema of elements processed in the Apache Beam pipeline."""
 
 from dataclasses import dataclass
+from typing import Any, Union
 
 import numpy as np
 
@@ -8,7 +9,7 @@ from gaia.data.models import TCE, StellarParameters, TimeSeries
 
 
 @dataclass
-class KeplerDataElement:
+class KeplerFullData:
     """Represents complete Kepler data: time series, TCEs, stellar parameters."""
 
     kepid: int
@@ -18,7 +19,7 @@ class KeplerDataElement:
 
 
 @dataclass
-class TimeSeriesElement:
+class TimeSeriesBase:
     """Represents time series for a specific target."""
 
     kepid: int
@@ -26,7 +27,7 @@ class TimeSeriesElement:
 
 
 @dataclass
-class TimeSeriesFeatureElement(TimeSeriesElement):
+class TimeSeriesFeature(TimeSeriesBase):
     """Represents a time series feature for a specific target."""
 
     series: list[np.ndarray]
@@ -34,7 +35,7 @@ class TimeSeriesFeatureElement(TimeSeriesElement):
 
 
 @dataclass
-class CentroidXYElement(TimeSeriesElement):
+class CentroidXY(TimeSeriesBase):
     """Represents the X (row) and Y (column) centroid positions over time."""
 
     tces: list[TCE]
@@ -43,17 +44,26 @@ class CentroidXYElement(TimeSeriesElement):
 
 
 @dataclass
-class NormTimeSeriesElement(TimeSeriesElement):
+class NormTimeSeries(TimeSeriesBase):
     """Represents normalized time series feature."""
 
-    time_series: np.ndarray
+    series: np.ndarray
     tce: TCE
 
 
 @dataclass
-class ViewsElement:
+class Views:
     """Represents local and global time series views for the specified TCE."""
 
     koi_tce_id: str
     local_view: np.ndarray
     global_view: np.ndarray
+
+@dataclass
+class ErrorEvent:
+    """Represents an error in pipeline processing."""
+
+    transform: str
+    error: Union[str, Exception]
+    data: Any
+    timestamp: Union[int, float, str]
