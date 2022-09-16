@@ -70,7 +70,7 @@ def handle_exception(
 
 def prepare_loop(
     loop: asyncio.AbstractEventLoop,
-    *args,
+    *args: Any,
     exit_signals: Optional[set[signal.Signals]] = None,
     exception_handler: Optional[Any] = None,
 ) -> None:

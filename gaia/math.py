@@ -1,27 +1,6 @@
 """Functions for computing statistics."""
 
-from typing import SupportsFloat
-
 import numpy as np
-
-
-def _compensate_robust_mean(
-    y: np.ndarray, absdev: np.ndarray, sigma: float, cut: float
-) -> tuple[float, np.ndarray]:
-    """Compensate the estimate of sigma due to trimming away outliers."""
-    # Identify outliers using estimate of the standard deviation of y.
-    mask = absdev <= cut * sigma
-
-    # Recompute the standard deviation, using the sample standard deviation of non-outlier points.
-    sigma = np.std(y[mask])
-
-    # Compensate the estimate of sigma due to trimming away outliers. The following formula is an
-    # approximation, see http://w.astro.berkeley.edu/~johnjohn/idlprocs/robust_mean.pro.
-    sc = np.max([cut, 1.0])
-    if sc <= 4.5:
-        sigma /= -0.15405 + 0.90723 * sc - 0.23584 * sc**2 + 0.020142 * sc**3
-
-    return sigma, mask
 
 
 def robust_mean(y: np.ndarray, sigma_cut: float) -> tuple[float, float, np.ndarray]:
@@ -115,26 +94,25 @@ def bic(k: int, n: int, sigma: float, ssr: float, penalty_coeff: float) -> float
     """
     # The following term is -2*ln(L), where L is the likelihood of the data given the model, under
     # the assumption that the model errors are iid Gaussian with mean 0 and std dev `sigma`.
-    likelihood = n * np.log(2 * np.pi * sigma**2) + ssr / sigma**2
-    penalty = k * np.log(n)
+    likelihood: float = n * np.log(2 * np.pi * sigma**2) + ssr / sigma**2
+    penalty: float = k * np.log(n)
     return likelihood + penalty_coeff * penalty
 
 
-def euclidian_distance(x: SupportsFloat, y: SupportsFloat) -> SupportsFloat:
-    """Compute the Euclidean distance between two points or two sequences of points
+def _compensate_robust_mean(
+    y: np.ndarray, absdev: np.ndarray, sigma: float, cut: float
+) -> tuple[float, np.ndarray]:
+    """Compensate the estimate of sigma due to trimming away outliers."""
+    # Identify outliers using estimate of the standard deviation of y.
+    mask = absdev <= cut * sigma
 
-    Euclidean distance is defined as follow: `dist = sqrt(x^2 + y^2)`
+    # Recompute the standard deviation, using the sample standard deviation of non-outlier points.
+    sigma = np.std(y[mask])
 
-    Parameters
-    ----------
-    x : SupportsFloat
-        One point or a sequence of points
-    y : SupportsFloat
-        Second point or a sequence of points
+    # Compensate the estimate of sigma due to trimming away outliers. The following formula is an
+    # approximation, see http://w.astro.berkeley.edu/~johnjohn/idlprocs/robust_mean.pro.
+    sc = np.max([cut, 1.0])
+    if sc <= 4.5:
+        sigma /= -0.15405 + 0.90723 * sc - 0.23584 * sc**2 + 0.020142 * sc**3
 
-    Returns
-    -------
-    SupportsFloat
-        Euclidean distance between `x` and `y`. This is a float or a numpy array of float values
-    """
-    return np.sqrt(x * x + y * y)
+    return sigma, mask

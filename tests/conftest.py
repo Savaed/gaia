@@ -1,13 +1,18 @@
+"""Shared pytest fixtures and utils."""
+
+from typing import Any
+
 import pandas as pd
 
 
-def create_df(records: list[tuple]) -> pd.DataFrame:
-    """Create `DataFrame` from records.
+def create_df(records: list[tuple[Any, ...]]) -> pd.DataFrame:
+    """Create pandas `DataFrame` from records.
 
     Parameters
     ----------
-    records : list[Any]
-        A list of tuples contained test data. The first tuple must be a columns names
+    records : list[tuple[Any, ...]]
+        A list of tuples contained test data. The first tuple must be a columns names os type `str`
+
     Returns
     -------
     pd.DataFrame

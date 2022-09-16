@@ -1,9 +1,6 @@
-"""
-Auto-updating progress allows adding new tasks
-and displays a progress bar(s). Based on rich.Progress.
-"""
+"""Auto-updating progress allows adding new tasks and displays a progress bar(s) based on rich."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from rich import progress
 from rich.table import Column
@@ -13,7 +10,7 @@ from rich.text import Text
 class JobsCompleteColumn(progress.MofNCompleteColumn):
     """Similiar to MofNCompleteColumn, but automatically select the best-matched unit scale."""
 
-    unit_scales = {
+    unit_scales: dict[str, float] = {
         "K": 1_000,
         "M": 1_000_000,
         "G": 10e9,
@@ -32,10 +29,10 @@ class JobsCompleteColumn(progress.MofNCompleteColumn):
         self.separator = separator
         super().__init__(table_column=table_column)
 
-    def render(self, task) -> Text:
+    def render(self, task: progress.Task) -> Text:
         """Show completed/total."""
         completed = task.completed
-        total = task.total
+        total = task.total or 0
 
         completed_scales = list(filter(lambda el: completed / el[1] > 1, self.unit_scales.items()))
         total_scales = list(filter(lambda el: total / el[1] > 1, self.unit_scales.items()))
@@ -54,7 +51,7 @@ class JobsCompleteColumn(progress.MofNCompleteColumn):
 
 
 class ProgressBar(progress.Progress):
-    def __init__(self, file_transfer: bool = False, **kwargs) -> None:
+    def __init__(self, file_transfer: bool = False, **kwargs: Any) -> None:
         """Custom version of `rich.Progress` to track tasks and display progress bar(s).
 
         Parameters
@@ -73,6 +70,3 @@ class ProgressBar(progress.Progress):
             progress.TimeElapsedColumn(),
             **kwargs,
         )
-
-    def __enter__(self) -> progress.Progress:
-        return super().__enter__()

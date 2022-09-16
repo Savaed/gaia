@@ -7,6 +7,8 @@ import structlog
 
 
 def configure_logging() -> None:
+    """Configure structured logging. It uses `logging` and `structlog` packages."""
+
     iso_timestamper = structlog.processors.TimeStamper(fmt="iso", utc=False)
     pre_chain = [
         # Add the log level and a timestamp to the event_dict if the log entry
@@ -19,7 +21,7 @@ def configure_logging() -> None:
         iso_timestamper,
     ]
 
-    logging.config.dictConfig(
+    logging.config.fileConfig(
         {
             "version": 1,
             "disable_existing_loggers": False,

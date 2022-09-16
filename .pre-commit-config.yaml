@@ -41,4 +41,4 @@ repos:
         language: system
         entry: pylint
         types: [python]
-        exclude: setup.py,tests
+        exclude: tests
