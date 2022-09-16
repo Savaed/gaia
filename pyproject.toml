@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "gaia"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "Exoplanet classification system with an explainable ANN model"
+authors = ["Krzysztof Gonet <36476874+Savaed@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -50,6 +50,7 @@ filterwarnings = ["ignore::RuntimeWarning", "ignore::DeprecationWarning"]
     ignore_errors = true
 
 [tool.mypy]
+plugins = "numpy.typing.mypy_plugin"
 disallow_untyped_defs = true
 no_implicit_optional = true
 warn_return_any = true
@@ -57,27 +58,15 @@ check_untyped_defs = true
 show_error_codes = true
 warn_unused_ignores = true
 ignore_missing_imports = true
-exclude = ["tests/"]
 
 [tool.pylint]
-    [tool.pylint.master]
-    ignore-patterns = ["tests/.*"]
-
     [tool.pylint.messages_control]
     disable =  [
-        "duplicate-code",
-        "locally-disabled",
-        "logging-format-interpolation",
-        "inconsistent-return-statements",
-        "import-outside-toplevel",
-        "no-else-raise",
-        "too-many-arguments",
-        "too-many-ancestors",
-        "too-many-branches",
-        "too-many-locals",
+        "import-outside-toplevel",   
         "missing-class-docstring",
         "no-member",
-        "logging-fstring-interpolation"
+        "logging-fstring-interpolation",
+        "too-few-public-methods"
     ]
 
     [tool.pylint.reports]
@@ -112,27 +101,19 @@ exclude = ["tests/"]
     inlinevar-rgx = "[A-Za-z_][A-Za-z0-9_]*$"
     class-rgx = "[A-Z_][a-zA-Z0-9]+$"
     module-rgx = "(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$"
-    method-rgx = "[a-z_][a-z0-9_]{2,30}$"
+    method-rgx = "[a-z_][a-z0-9_]{2,50}$"
     no-docstring-rgx = "__.*__"
     docstring-min-length = -1
 
     [tool.pylint.format]
-    single-line-if-stmt = false
-    indent-after-paren = 4
     expected-line-ending-format = "LF"
-    good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "f", "n", "_y", "_x"]
-
-    [tool.pylint.imports]
-    deprecated-modules = ["regsub", "TERMIOS", "Bastion", "rexec"]
+    good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "n",]
 
     [tool.pylint.classes]
     defining-attr-methods = ["__init__", "__new__", "setUp"]
     valid-classmethod-first-arg = "cls"
     valid-metaclass-classmethod-first-arg = "mcs"
     exclude-protected = ["_asdict", "_fields", "_replace", "_source" ,"_make"]
-
-    [tool.pylint.exceptions]
-    overgeneral-exceptions = "Exception"
 
 [build-system]
 requires = ["poetry-core"]
