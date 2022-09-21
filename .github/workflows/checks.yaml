@@ -1,0 +1,38 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  checks:
+    # name: ${{ matrix.os }} / python-${{ matrix.python-version }}
+    name: pre-commit checks
+    # strategy:
+    #   matrix:
+    #     os: [ubuntu-20.04]
+    #     python-version: ["3.9"]
+    #   fail-fast: false
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up environment
+        uses: ./.github/actions/setup-poetry-env
+
+      - name: Run pre-commit checks
+        run: poetry run pre-commit run --show-diff-on-failure
+
+      # - name: Run pytest
+      #   run: poetry run pytest -v tests
