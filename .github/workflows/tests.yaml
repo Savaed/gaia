@@ -31,4 +31,7 @@ jobs:
         uses: ./.github/actions/setup-poetry-env
 
       - name: Run pytest
-        run: poetry run pytest -v tests
+        run: poetry run pytest tests
+      
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v3
