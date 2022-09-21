@@ -1,29 +1,26 @@
 name: Set up Poetry environment
 description: Set up Poetry env
-# inputs:
-#   who-to-greet:  # id of input
-#     description: 'Who to greet'
-#     required: true
-#     default: 'World'
-# outputs:
-#   random-number:
-#     description: "Random number"
-#     value: ${{ steps.random-number-generator.outputs.random-number }}
-runs:
+
+runs:  
   using: "composite"
+  
   steps:
     - name: Get full Python version
       id: full-python-version
+      shell: bash
       run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
 
     - name: Bootstrap poetry
-      run: curl -sSL https://install.python-poetry.org | python3 - -y && poetry --version
+      shell: bash
+      run: curl -sSL https://install.python-poetry.org | python3 - -y
 
     - name: Update PATH
       if: ${{ matrix.os != 'Windows' }}
+      shell: bash
       run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Configure poetry
+      shell: bash
       run: poetry config virtualenvs.in-project true
 
     - name: Set up cache
@@ -35,7 +32,9 @@ runs:
 
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
       run: timeout 10s poetry run pip --version || rm -rf .venv
 
     - name: Install dependencies
+      shell: bash
       run: poetry install

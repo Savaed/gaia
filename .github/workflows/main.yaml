@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-
 jobs:
   main:
     name: ${{ matrix.os }} / python-${{ matrix.python-version }}
@@ -19,7 +18,6 @@ jobs:
       run:
         shell: bash
     runs-on: ubuntu-20.04
-
 
     steps:
       - uses: actions/checkout@v3
@@ -58,7 +56,7 @@ jobs:
       #   run: poetry install
 
       - name: Set up environment
-        uses: actions/setup-poetry-env
+        uses: ./.github/actions/setup-poetry-env
 
       - name: Run pre-commit
         run: poetry run pre-commit run --show-diff-on-failure
