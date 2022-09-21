@@ -9,7 +9,7 @@ on:
 
 jobs:
   tests:
-    name: ${{ matrix.os }} / ${{ matrix.python-version }}
+    name: ${{ matrix.os }} / python ${{ matrix.python-version }}
     strategy:
       matrix:
         os: [ubuntu-20.04]
@@ -34,7 +34,7 @@ jobs:
         run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
 
       - name: Bootstrap poetry
-        run: curl -sSL https://install.python-poetry.org | python3 - -y
+        run: curl -sSL https://install.python-poetry.org | python3 - -y && poetry --version
 
       - name: Update PATH
         if: ${{ matrix.os != 'Windows' }}
