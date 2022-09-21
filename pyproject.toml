@@ -29,6 +29,7 @@ pylint = "^2.14.5"
 pytest = "^7.1.2"
 pytest-cov = "^3.0.0"
 pytest-mock = "^3.8.2"
+diagrams = "^0.22.0"
 
 [tool.isort]
 profile = "black"
@@ -62,11 +63,12 @@ ignore_missing_imports = true
 [tool.pylint]
     [tool.pylint.messages_control]
     disable =  [
-        "import-outside-toplevel",   
+        "import-outside-toplevel",
         "missing-class-docstring",
         "no-member",
         "logging-fstring-interpolation",
-        "too-few-public-methods"
+        "too-few-public-methods",
+        "unnecessary-ellipsis"
     ]
 
     [tool.pylint.reports]

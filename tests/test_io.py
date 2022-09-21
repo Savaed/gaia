@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import pytest
+from _pytest.fixtures import SubRequest
 from _pytest.monkeypatch import MonkeyPatch
 from astropy.io import fits
 from astropy.table import Table
@@ -169,10 +170,11 @@ class TestFITSTimeSeriesReader:
             io.FITSTimeSeriesReader().read("existen/file.fits")
 
     @pytest.fixture
-    def fits_file(self) -> FITSFile:
+    def fits_file(self, request: SubRequest) -> FITSFile:
         """Create FITS file content with columns and records."""
-        fields = ["A", "B"]
-        data = ([1, 2, 3, 4, 5], [6, 7, 8, 9, 10])
+        fields: list[str]
+        data = tuple[list[str], ...]
+        fields, data = request.param
         hdu1 = fits.PrimaryHDU()
         ts_data = np.stack(data, axis=1)
         time_series = Table(names=fields, data=ts_data)
@@ -180,11 +182,20 @@ class TestFITSTimeSeriesReader:
         hdu3 = fits.ImageHDU(name="APERTURE")
         return fits.HDUList([hdu1, hdu2, hdu3]), fields, np.array(data)
 
+    @pytest.mark.parametrize(
+        "fits_file",
+        [
+            (["A", "B"], ([1, 2, 3, 4, 5], [6, 7, 8, 9, 10])),
+            (["A"], ([[1, 2, 3, 4, 5]])),
+        ],
+        indirect=True,
+        ids=["one_column", "two_columns"],
+    )
     def test_read__return_correct_dict(self, mocker: MockerFixture, fits_file: FITSFile) -> None:
         """Test check whether a correct dict is returned after reading the FITS file."""
         hdu_content, fields, data = fits_file
-        expected = dict(zip(fields, data))
         mocker.patch("gaia.io.fits.open", return_value=hdu_content)
+        expected = dict(zip(fields, data))
 
         result = io.FITSTimeSeriesReader().read("a/b/c.fits")
 

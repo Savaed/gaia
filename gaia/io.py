@@ -1,6 +1,6 @@
 """
 IO operations that can be run in any of the supported environments: local,
-Google Cloud Platform, HDFS.
+Google Cloud Platform (GCP), HDFS.
 """
 
 from typing import Optional, Protocol, TypeVar
@@ -73,32 +73,34 @@ class MissingExtensionHDUError(Exception):
 
 
 class Reader(Protocol[T_co]):
-    """Reader that return a generic data from a specific source."""
+    """Generic data reader."""
 
     def read(self, source: str) -> T_co:
+        """Read a data from a specific source.
+
+        Args:
+            source (str): The source location
+
+        Returns:
+            T_co: Generic data of type `T_co`
+        """
         ...
 
 
 class DataFrameReader:
-    """CSV reader that return a pandas `DataFrame` object."""
+    """CSV file reader that return a tabular data as pandas DataFrame object."""
 
     def read(self, source: str) -> pd.DataFrame:
-        """Read a CSV file as pandas `DataFrame` object.
+        """Read a CSV file as pandas DataFrame object.
 
-        Parameters
-        ----------
-        source : str
-            A source location. It can be in a local system, or external like HDFS, GCP.
+        Args:
+            source (str): A source location. It can be local system or external e.g. HDFS, GCP
 
-        Returns
-        -------
-        pd.DataFrame
-            Tabular data representation
+        Raises:
+            FileNotFoundError: No file found
 
-        Raises
-        ------
-        FileNotFoundError
-            No file found
+        Returns:
+            pd.DataFrame: Tabular data
         """
         try:
             with tf.io.gfile.GFile(source) as gf:
@@ -108,7 +110,14 @@ class DataFrameReader:
 
 
 class FITSTimeSeriesReader:
+    """FITS file time series reader."""
+
     def __init__(self, hdu: str = "LIGHTCURVE") -> None:
+        """Initialize a `FITSTimeSeriesReader` object.
+
+        Args:
+            hdu (str, optional): HDU time series extension name. Defaults to "LIGHTCURVE".
+        """
         self._hdu = hdu
 
     def read(self, source: str) -> dict[str, np.ndarray]:
@@ -116,20 +125,14 @@ class FITSTimeSeriesReader:
 
         A file may be read from any of the following locations: local, GCP, HDFS or AWS.
 
-        Parameters
-        ----------
-        source : str
-            The location of the source FITS file
+        Args:
+            source (str): The location of the source FITS file
 
-        Returns
-        -------
-        dict[str, np.ndarray]
-            Time series: time, values
+        Raises:
+            FileNotFoundError: No file found
 
-        Raises
-        ------
-        FileNotFoundError
-            No file found
+        Returns:
+            dict[str, np.ndarray]: Time series in format of `{"fits_columns_name", values, ...}`
         """
         return self._read_as_dict(source)
 
@@ -151,6 +154,11 @@ class FITSTimeSeriesReader:
 
 
 def _check_kepid(kepid: int) -> None:
+    """Raise `ValueError` if `kepid` is outside of the range [1-999 999 999].
+
+    Args:
+        kepid (int): The ID of Kepler Object of Interest (KOI) target star or star system
+    """
     if not 0 < kepid < 1_000_000_000:
         raise ValueError(f"Specified {kepid=} is outside of the range [1-999 999 999]")
 
@@ -158,15 +166,11 @@ def _check_kepid(kepid: int) -> None:
 def get_quarter_prefixes(cadence: Cadence) -> list[str]:
     """Get Kepler observation quarters prefixes for a specified cadence.
 
-    Parameters
-    ----------
-    cadence : Cadence
-        Observation cadence
+    Args:
+        cadence (Cadence): Observation cadence
 
-    Returns
-    -------
-    list[str]
-        Quarter prefixes (quarter start date)
+    Returns:
+        list[str]: Quarter prefixes (quarter start date)
     """
     queraters = (
         _SHORT_CADENCE_QUARTER_PREFIXES
@@ -186,28 +190,20 @@ def get_kepler_fits_paths(
 ) -> list[str]:
     """Generate file paths for Kepler time series FITS files.
 
-    Parameters
-    ----------
-    data_dir : str
-        Source folder path
-    kepid : int
-        The ID of KOI target
-    cadence : Cadence
-        Cadence of observations
-    quarters: Optional[tuple[str, ...]], optional
-        Prefixes of the quarters for which the time series should be returned. If None, then
-        all available data will be returned, by default None
+    Args:
+        data_dir (str): Source folder path
+        kepid (int): The ID of KOI target
+        cadence (Cadence): Cadence of observations
+        quarters (Optional[tuple[str, ...]], optional): Prefixes of the quarters for which the time
+        series should be returned. If None, then all available data will be returned. Defaults to
+        None.
 
-    Returns
-    -------
-    list[str]
-        Filenames for a specific KOI and cadence located in `data_dir` folder optionaly filtered
-        by quarter prefixes
+    Returns:
+        list[str]: Filenames for a specific KOI and cadence located in `data_dir` folder optionaly
+        filtered by quarter prefixes
 
-    Raises
-    ------
-    ValueError
-        Parameter `kepid` is outside of the range 1-999 999 999
+    Raises:
+        ValueError: Parameter `kepid` is outside of the range 1-999 999 999
     """
     _check_kepid(kepid)
     prefixes = get_quarter_prefixes(cadence)
