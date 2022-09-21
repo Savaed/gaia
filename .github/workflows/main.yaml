@@ -1,4 +1,4 @@
-name: Tests
+name: tests
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   tests:
-    name: ${{ matrix.os }} / python ${{ matrix.python-version }}
+    name: ${{ matrix.os }} / python-${{ matrix.python-version }}
     strategy:
       matrix:
         os: [ubuntu-20.04]
@@ -57,11 +57,8 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
-      # - name: Run mypy
-      #   run: poetry run mypy
-
-      # - name: Install pytest plugin
-      #   run: poetry run pip install pytest-github-actions-annotate-failures
+      - name: Run pre-commit
+        run: poetry run pre-commit run --show-diff-on-failure
 
       - name: Run pytest
         run: poetry run pytest -q tests
