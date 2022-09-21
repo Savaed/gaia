@@ -8,7 +8,7 @@ on:
 
 
 jobs:
-  tests:
+  main:
     name: ${{ matrix.os }} / python-${{ matrix.python-version }}
     strategy:
       matrix:
