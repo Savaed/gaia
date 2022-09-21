@@ -8,13 +8,12 @@ on:
 
 jobs:
   checks:
-    # name: ${{ matrix.os }} / python-${{ matrix.python-version }}
     name: pre-commit checks
-    # strategy:
-    #   matrix:
-    #     os: [ubuntu-20.04]
-    #     python-version: ["3.9"]
-    #   fail-fast: false
+    strategy:
+      matrix:
+        os: [ubuntu-20.04]
+        python-version: ["3.9"]
+      fail-fast: false
     defaults:
       run:
         shell: bash
@@ -33,6 +32,3 @@ jobs:
 
       - name: Run pre-commit checks
         run: poetry run pre-commit run --show-diff-on-failure
-
-      # - name: Run pytest
-      #   run: poetry run pytest -v tests
