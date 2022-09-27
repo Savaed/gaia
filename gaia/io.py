@@ -7,6 +7,7 @@ from typing import Optional, Protocol, TypeVar
 
 import numpy as np
 import pandas as pd
+import structlog
 import tensorflow as tf
 from astropy.io import fits
 from tensorflow.python.framework.errors import NotFoundError  # pylint: disable=no-name-in-module
@@ -16,6 +17,8 @@ from gaia.enums import Cadence
 
 T_co = TypeVar("T_co", covariant=True)
 
+
+logger = structlog.stdlib.get_logger()
 
 # Quarter index to filename prefix for long cadence Kepler data.
 # Reference: https://archive.stsci.edu/kepler/software/get_kepler.py
@@ -82,13 +85,16 @@ class Reader(Protocol[T_co]):
             source (str): The source location
 
         Returns:
-            T_co: Generic data of type `T_co`
+            T_co: Generic data
         """
         ...
 
 
 class DataFrameReader:
     """CSV file reader that return a tabular data as pandas DataFrame object."""
+
+    def __init__(self) -> None:
+        self.log = logger.new()
 
     def read(self, source: str) -> pd.DataFrame:
         """Read a CSV file as pandas DataFrame object.
@@ -103,6 +109,7 @@ class DataFrameReader:
             pd.DataFrame: Tabular data
         """
         try:
+            self.log.debug("Reading CSV file", path=source)
             with tf.io.gfile.GFile(source) as gf:
                 return pd.read_csv(gf)
         except NotFoundError as ex:
@@ -118,6 +125,7 @@ class FITSTimeSeriesReader:
         Args:
             hdu (str, optional): HDU time series extension name. Defaults to "LIGHTCURVE".
         """
+        self.log = logger.new()
         self._hdu = hdu
 
     def read(self, source: str) -> dict[str, np.ndarray]:
@@ -138,9 +146,11 @@ class FITSTimeSeriesReader:
 
     def _read_as_dict(self, source: str) -> dict[str, np.ndarray]:
         """Read a FITS file as a dict."""
+        self.log.debug("Reading FITS file", path=source)
         try:
             with tf.io.gfile.GFile(source, mode="rb") as gf, fits.open(gf) as hdul:
                 time_series = hdul[self._hdu]
+                self.log.debug("Extension HDU read", hdu=self._hdu)
                 data = {col.name: time_series.data[col.name] for col in time_series.columns}
                 return data
         except NotFoundError as ex:
@@ -172,6 +182,7 @@ def get_quarter_prefixes(cadence: Cadence) -> list[str]:
     Returns:
         list[str]: Quarter prefixes (quarter start date)
     """
+    logger.debug("Getting Kepler quarters prefixes", cadence=cadence)
     queraters = (
         _SHORT_CADENCE_QUARTER_PREFIXES
         if cadence is Cadence.SHORT
@@ -209,6 +220,7 @@ def get_kepler_fits_paths(
     prefixes = get_quarter_prefixes(cadence)
 
     if quarters:
+        logger.debug("Filter Kepler paths based on quarter prefixes", include_quarters=quarters)
         prefixes = [pref for pref in prefixes if pref in quarters]
 
     return [
