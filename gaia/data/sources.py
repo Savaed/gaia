@@ -5,9 +5,10 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import cache
-from typing import Optional, Protocol, TypeVar, Union
+from typing import Optional, Protocol, TypeVar
 
 import numpy as np
+import structlog
 
 from gaia.data.models import DictConvertibleObject, TimeSeries
 from gaia.enums import Cadence
@@ -17,41 +18,39 @@ from gaia.io import Reader, get_kepler_fits_paths
 T = TypeVar("T", bound=DictConvertibleObject)
 
 
-# class KeplerTabularDataSource(Protocol[T]):
-#     def get_all(self) -> list[T]:
-#         ...
-
-#     def get_by(self, predicate: Callable[[T], bool]) -> list[T]:
-#         ...
-
-#     def get_by_kepid(self, kepid: int) -> list[T]:
-#         ...
+logger = structlog.stdlib.get_logger()
 
 
-# class CSVKeplerDataSource(Generic[T]):
-#     def __init__(self, reader: Reader[pd.DataFrame]) -> None:
-#         self.reader = reader
+@dataclass
+class MissingKoiError(Exception):
+    """Raised when no KOI found for requested `kepid`."""
 
-#     def get_all(self) -> list[T]:
-#         raise NotImplementedError
+    kepid: int
 
-#     def get_by(self, predicate: Callable[[T], bool]) -> list[T]:
-#         raise NotImplementedError
+    def __repr__(self) -> str:
+        return f"Kepler Object of Interest (KOI) not found with id '{self.kepid}'"
 
-#     def get_by_kepid(self, kepid: int) -> list[T]:
-#         raise NotImplementedError
+    __str__ = __repr__
+
+
+@dataclass
+class InvalidColumnError(Exception):
+    """Raised when there is no such field/column available."""
+
+    column: str
+
+    def __repr__(self) -> str:
+        return f"No column '{self.column}' found"
+
+    __str__ = __repr__
 
 
 class KeplerTimeSeriesSource(Protocol):
     def get(self, kepid: int, field: str) -> TimeSeries:
         ...
 
-    def get_for_quarter(self, kepid: int, field: str, quarter: Union[str, int]) -> TimeSeries:
+    def get_for_quarters(self, kepid: int, field: str, quarters: tuple[str, ...]) -> TimeSeries:
         ...
-
-
-class FITSReadingError(Exception):
-    """Raised when any error in FITS file reading process occurs."""
 
 
 class FITSKeplerTimeSeriesSource:
@@ -62,6 +61,7 @@ class FITSKeplerTimeSeriesSource:
         cadence: Cadence,
         time_field: str = "TIME",
     ) -> None:
+        self.log = logger.new()
         self._reader = reader
         self._data_dir = data_dir
         self._cadence = cadence
@@ -69,15 +69,33 @@ class FITSKeplerTimeSeriesSource:
 
     @cache
     def get(self, kepid: int, field: str) -> TimeSeries:
-        data = self._read(kepid, None)
-        return TimeSeries(time=data[self._time_field], values=data[field])
+        """Get time series feature for a specific KOI.
+
+        Args:
+            kepid (int): ID of KOI
+            field (str): Field (column) in FITS file corresponding with time series feature
+
+        Returns:
+            TimeSeries: Time series feature for a specific KOI
+        """
+        return self._read(kepid, field, None)
 
     @cache
     def get_for_quarters(self, kepid: int, field: str, quarters: tuple[str, ...]) -> TimeSeries:
-        data = self._read(kepid, quarters)
-        return TimeSeries(time=data[self._time_field], values=data[field])
+        """Get time series feature for a specific KOI. Filter by Kepler mission quarters.
 
-    def _read(self, kepid: int, quarters: Optional[tuple[str, ...]]) -> dict[str, list[np.ndarray]]:
+        Args:
+            kepid (int): ID of KOI
+            field (str): Field (column) in FITS file corresponding with time series feature
+            quarters (tuple[str, ...]): Quarter prefixes for which time series should be returned
+
+        Returns:
+            TimeSeries: Time series feature for a specific KOI and quarters
+        """
+        return self._read(kepid, field, quarters=quarters)
+
+    def _read(self, kepid: int, field: str, quarters: Optional[tuple[str, ...]]) -> TimeSeries:
+        """Read time series for a specific KOI and quarters from source FITS files)."""
         data = defaultdict(list)
         paths = get_kepler_fits_paths(self._data_dir, kepid, self._cadence, quarters)
 
@@ -86,14 +104,17 @@ class FITSKeplerTimeSeriesSource:
                 file_data = self._reader.read(path)
             except FileNotFoundError:
                 # This is expected as there is no file for several quarters
-                # TODO: Add logging WARN
-                pass
+                self.log.warning("File not found", path=path)
             else:
                 for key, value in file_data.items():
                     data[key].append(value)
 
+        data = dict(data)
         if not data:
-            # There is not even one file for this KOI
-            raise FITSReadingError(f"No files for {kepid=} and cadence='{self._cadence}'")
+            # There are no files for this KOI
+            raise MissingKoiError(kepid=kepid)
 
-        return data
+        try:
+            return TimeSeries(time=data[self._time_field], values=data[field])
+        except KeyError as ex:
+            raise InvalidColumnError(ex.args[0]) from ex
