@@ -1,10 +1,32 @@
-name: Set up Poetry environment
-description: Set up Poetry env
+name: main
 
-runs:  
-  using: "composite"
-  
-  steps:
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    
+jobs:
+  main:
+    name: Main workflow
+    strategy:
+      matrix:
+        os: [ubuntu-20.04]
+        python-version: ["3.9"]
+      fail-fast: false
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
     - name: Get full Python version
       id: full-python-version
       shell: bash
@@ -38,3 +60,16 @@ runs:
     - name: Install dependencies
       shell: bash
       run: poetry install
+
+    - name: Run pre-commit checks
+      run: poetry run pre-commit run --show-diff-on-failure
+
+    - name: Run pytest
+      run: poetry run pytest --cov=. --cov-report xml tests
+    
+    - name: Run Codecov report
+      uses: codecov/codecov-action@v3
+      with:
+        # see https://github.com/codecov/codecov-action/issues/557 - for private repos only
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: coverage.xml
