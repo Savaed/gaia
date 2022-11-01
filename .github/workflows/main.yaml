@@ -43,9 +43,7 @@ jobs:
 
     - name: Configure poetry
       shell: bash
-      run: >
-        poetry config virtualenvs.in-project true                
-        poetry config experimental.new-installer false
+      run: poetry config virtualenvs.in-project true || poetry config experimental.new-installer false
 
     - name: Set up cache
       uses: actions/cache@v3
