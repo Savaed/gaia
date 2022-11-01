@@ -5,7 +5,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import cache
-from typing import Optional, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 import numpy as np
 import structlog
@@ -94,7 +94,7 @@ class FITSKeplerTimeSeriesSource:
         """
         return self._read(kepid, field, quarters=quarters)
 
-    def _read(self, kepid: int, field: str, quarters: Optional[tuple[str, ...]]) -> TimeSeries:
+    def _read(self, kepid: int, field: str, quarters: tuple[str, ...] | None = None) -> TimeSeries:
         """Read time series for a specific KOI and quarters from source FITS files)."""
         data = defaultdict(list)
         paths = get_kepler_fits_paths(self._data_dir, kepid, self._cadence, quarters)

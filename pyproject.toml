@@ -6,7 +6,7 @@ authors = ["Krzysztof Gonet <36476874+Savaed@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">= 3.9, <3.11"
+python = ">= 3.10, <3.11"
 aiohttp = "^3.8.1"
 astropy = "^5.1"
 pandas = "^1.4.3"

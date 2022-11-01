@@ -3,7 +3,7 @@ IO operations that can be run in any of the supported environments: local,
 Google Cloud Platform (GCP), HDFS.
 """
 
-from typing import Optional, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -197,7 +197,7 @@ def get_quarter_prefixes(cadence: Cadence) -> list[str]:
 
 
 def get_kepler_fits_paths(
-    data_dir: str, kepid: int, cadence: Cadence, quarters: Optional[tuple[str, ...]] = None
+    data_dir: str, kepid: int, cadence: Cadence, quarters: tuple[str, ...] | None = None
 ) -> list[str]:
     """Generate file paths for Kepler time series FITS files.
 

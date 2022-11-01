@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABCMeta
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -17,7 +17,7 @@ class DictConvertibleObject(metaclass=ABCMeta):
 
     @classmethod
     def from_dict(
-        cls, data_dict: dict[str, Any], field_map: Optional[dict[str, str]] = None
+        cls, data_dict: dict[str, Any], field_map: dict[str, str] | None = None
     ) -> DictConvertibleObject:
         """Create an object from a dict.
 
