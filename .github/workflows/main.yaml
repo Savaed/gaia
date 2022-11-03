@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    
+
 jobs:
   main:
     name: Main workflow
@@ -30,7 +30,7 @@ jobs:
     - name: Get full Python version
       id: full-python-version
       shell: bash
-      run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
+      run: echo PY_VERSION=$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))") >> $GITHUB_OUTPUT
 
     - name: Bootstrap poetry
       shell: bash
@@ -43,14 +43,14 @@ jobs:
 
     - name: Configure poetry
       shell: bash
-      run: poetry config virtualenvs.in-project true || poetry config experimental.new-installer false
+      run: poetry config virtualenvs.in-project true || poetry config experimental.new-installer false || poetry config installer.parallel false
 
     - name: Set up cache
       uses: actions/cache@v3
       id: cache
       with:
         path: .venv
-        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
+        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.PY_VERSION }}-${{ hashFiles('**/poetry.lock') }}
 
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
@@ -61,12 +61,12 @@ jobs:
       shell: bash
       run: poetry install
 
-    - name: Run pre-commit checks
+    - name: Run pre-commit
       run: poetry run pre-commit run --show-diff-on-failure
 
     - name: Run pytest
       run: poetry run pytest --cov=. --cov-report xml tests
-    
+
     - name: Run Codecov report
       uses: codecov/codecov-action@v3
       with:
