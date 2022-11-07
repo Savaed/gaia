@@ -34,20 +34,33 @@ class JobsCompleteColumn(progress.MofNCompleteColumn):
         completed = task.completed
         total = task.total or 0
 
-        completed_scales = list(filter(lambda el: completed / el[1] > 1, self.unit_scales.items()))
-        total_scales = list(filter(lambda el: total / el[1] > 1, self.unit_scales.items()))
+        completed_scales = list(
+            filter(lambda el: completed / el[1] > 1, self.unit_scales.items())
+        )
+        total_scales = list(
+            filter(lambda el: total / el[1] > 1, self.unit_scales.items())
+        )
 
-        completed_unit, completed_scale = completed_scales[-1] if completed_scales else (None, 1)
+        completed_unit, completed_scale = (
+            completed_scales[-1] if completed_scales else (None, 1)
+        )
         total_unit, total_scale = total_scales[-1] if total_scales else (None, 1)
 
         scaled_completed = completed / completed_scale
         scaled_total = total / total_scale
 
-        completed_txt = f"{scaled_completed:.1f}" if completed_unit else f"{scaled_completed:.0f}"
+        completed_txt = (
+            f"{scaled_completed:.1f}" if completed_unit else f"{scaled_completed:.0f}"
+        )
         completed_units_txt = completed_unit or ""
-        scaled_total_txt = f"{scaled_total:.1f}" if total_unit else f"{scaled_total:.0f}"
+        scaled_total_txt = (
+            f"{scaled_total:.1f}" if total_unit else f"{scaled_total:.0f}"
+        )
         total_txt = f"{self.separator}{scaled_total_txt}{total_unit or ''}"
-        return Text(f"{completed_txt}{completed_units_txt}{total_txt}", style="progress.download")
+        return Text(
+            f"{completed_txt}{completed_units_txt}{total_txt}",
+            style="progress.download",
+        )
 
 
 class ProgressBar(progress.Progress):

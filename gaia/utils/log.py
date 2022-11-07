@@ -22,7 +22,7 @@ def configure_logging() -> None:
     ]
 
     logging.config.fileConfig(
-        {
+        {  # type: ignore
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": {
@@ -30,7 +30,9 @@ def configure_logging() -> None:
                     "()": structlog.stdlib.ProcessorFormatter,
                     "processors": [
                         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+                        structlog.processors.TimeStamper(
+                            fmt="%Y-%m-%d %H:%M:%S", utc=False
+                        ),
                         structlog.dev.ConsoleRenderer(colors=True, pad_event=50),
                     ],
                 },
@@ -48,7 +50,8 @@ def configure_logging() -> None:
                             ]
                         ),
                         structlog.processors.KeyValueRenderer(
-                            sort_keys=True, key_order=["timestamp", "level", "logger", "event"]
+                            sort_keys=True,
+                            key_order=["timestamp", "level", "logger", "event"],
                         ),
                     ],
                     "foreign_pre_chain": pre_chain,

@@ -7,7 +7,6 @@ from typing import Any, Callable, Optional, Union
 
 import structlog
 
-
 log = structlog.stdlib.get_logger()
 
 
