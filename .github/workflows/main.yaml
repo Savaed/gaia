@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 env:
-  FORCE_COLOR: 1
+  FORCE_COLOR: "1"
+  TOX_TESTENV_PASSENV: FORCE_COLOR
 
 jobs:
   main:
