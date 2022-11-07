@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Union
 
 import structlog
 
+
 log = structlog.stdlib.get_logger()
 
 
@@ -111,7 +112,7 @@ def prepare_loop(
     log.info("Asyncio exception handlers set")
 
 
-async def cancel_tasks(tasks: list[Union[asyncio.Future, asyncio.Task]]) -> None:
+async def cancel_tasks(tasks: list[Union[asyncio.Future[Any], asyncio.Task[Any]]]) -> None:
     """Cancel outstanding tasks.
 
     Parameters

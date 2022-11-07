@@ -30,9 +30,7 @@ def configure_logging() -> None:
                     "()": structlog.stdlib.ProcessorFormatter,
                     "processors": [
                         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                        structlog.processors.TimeStamper(
-                            fmt="%Y-%m-%d %H:%M:%S", utc=False
-                        ),
+                        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
                         structlog.dev.ConsoleRenderer(colors=True, pad_event=50),
                     ],
                 },
