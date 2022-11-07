@@ -1,101 +1,13 @@
-[tool.poetry]
-name = "gaia"
+[project]
+name = "GAIA"
 version = "0.1.0"
 description = "Exoplanet classification system with an explainable ANN model"
-authors = ["Krzysztof Gonet <36476874+Savaed@users.noreply.github.com>"]
+authors = [{ name = "Krzysztof Gonet", email = "36476874+Savaed@users.noreply.github.com" }]
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = ">=3.10, <3.11"
-
-[tool.poetry.group.dev.dependencies]
-
-[tool.isort]
-profile = "black"
-lines_after_imports = 2
-line_length = 100
-
-[tool.black]
-line-length = 100
-target-version = ["py39"]
-
-[tool.pytest.ini_options]
-filterwarnings = ["ignore::RuntimeWarning", "ignore::DeprecationWarning"]
-
-[tool.coverage]
-    [tool.coverage.run]
-    omit = ["*tests*", "gaia/data/models.py", "*enums.py*", "*constant[s]*"]
-
-    [tool.coverage.report]
-    ignore_errors = true
-
-[tool.mypy]
-plugins = "numpy.typing.mypy_plugin"
-disallow_untyped_defs = true
-no_implicit_optional = true
-warn_return_any = true
-check_untyped_defs = true
-show_error_codes = true
-warn_unused_ignores = true
-ignore_missing_imports = true
-
-[tool.pylint]
-    [tool.pylint.messages_control]
-    disable =  [
-        "import-outside-toplevel",
-        "missing-class-docstring",
-        "no-member",
-        "logging-fstring-interpolation",
-        "too-few-public-methods",
-        "unnecessary-ellipsis"
-    ]
-
-    [tool.pylint.reports]
-    evaluation = "10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)"
-
-    [tool.pylint.spelling]
-    spelling-store-unknown-words = false
-
-    [tool.pylint.design]
-    max-attributes = 10
-
-    [tool.pylint.similarities]
-    ignore-imports = false
-
-    [tool.pylint.miscellaneous]
-    notes = ["TODO", "FIXME", "BUG", "NOTE", "HACK", "REVIEW"]
-
-    [tool.pylint.variables]
-    init-import = true
-    callbacks = ["cb_" ,"_cb"]
-
-    [tool.pylint.typecheck]
-    generated-members = ["REQUEST", "acl_users", "aq_parent"]
-
-    [tool.pylint.basic]
-    function-rgx = "[a-z_][a-z0-9_]{2,50}$"
-    variable-rgx = "[a-z_][a-z0-9_]{1,30}$"
-    const-rgx = "(([A-Z_][A-Z0-9_]*)|(__.*__))$"
-    attr-rgx = "[a-z_][a-z0-9_]{2,30}$"
-    argument-rgx = "[a-z_][a-z0-9_]{2,30}$"
-    class-attribute-rgx = "([A-Za-z_][A-Za-z0-9_]{2,30}|(__.*__))$"
-    inlinevar-rgx = "[A-Za-z_][A-Za-z0-9_]*$"
-    class-rgx = "[A-Z_][a-zA-Z0-9]+$"
-    module-rgx = "(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$"
-    method-rgx = "[a-z_][a-z0-9_]{2,50}$"
-    no-docstring-rgx = "__.*__"
-    docstring-min-length = -1
-
-    [tool.pylint.format]
-    expected-line-ending-format = "LF"
-    good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "x", "y", "n",]
-
-    [tool.pylint.classes]
-    defining-attr-methods = ["__init__", "__new__", "setUp"]
-    valid-classmethod-first-arg = "cls"
-    valid-metaclass-classmethod-first-arg = "mcs"
-    exclude-protected = ["_asdict", "_fields", "_replace", "_source" ,"_make"]
+dependencies = [
+    "structlog"
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
