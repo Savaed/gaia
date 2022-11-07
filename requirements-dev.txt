@@ -6,8 +6,12 @@
 #
 attrs==22.1.0
     # via pytest
-coverage==6.5.0
+covdefaults==2.2.0
     # via GAIA (pyproject.toml)
+coverage==6.5.0
+    # via
+    #   GAIA (pyproject.toml)
+    #   covdefaults
 exceptiongroup==1.0.1
     # via pytest
 iniconfig==1.1.1

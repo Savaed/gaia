@@ -1,7 +1,9 @@
-data/
-venv/
-.vscode/
-.env
-__pycache__/
-.tox/
+**/*.p[ocd]
+**/__pycache__/
 .coverage
+.env
+.git/
+.tox/
+.vscode/
+coverage*
+data/

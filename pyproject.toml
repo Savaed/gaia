@@ -16,5 +16,9 @@ dependencies = [
 test = [
   "pytest",
   "coverage",
+  "covdefaults",
   "pytest-mock"
 ]
+
+[tool.coverage.run]
+plugins = ["covdefaults"]
