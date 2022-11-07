@@ -11,3 +11,10 @@ readme = "README.md"
 dependencies = [
     "structlog"
 ]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+  "coverage",
+  "pytest-mock"
+]
