@@ -3,7 +3,8 @@
 import asyncio
 import functools
 import signal
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 import structlog
 
@@ -12,7 +13,7 @@ log = structlog.stdlib.get_logger()
 
 
 async def shutdown(
-    loop: asyncio.AbstractEventLoop, exit_signal: Optional[signal.Signals] = None
+    loop: asyncio.AbstractEventLoop, exit_signal: signal.Signals | None = None
 ) -> None:
     """
     Cancel all non-current tasks and shut down a script.
@@ -44,7 +45,7 @@ async def shutdown(
 def handle_exception(
     loop: asyncio.AbstractEventLoop,
     context: dict[str, Any],
-    callback: Optional[Callable[[], Any]] = None,
+    callback: Callable[[], Any] | None = None,
 ) -> None:
     """
     Set global exception handler.
@@ -71,8 +72,8 @@ def handle_exception(
 def prepare_loop(
     loop: asyncio.AbstractEventLoop,
     *args: Any,
-    exit_signals: Optional[set[signal.Signals]] = None,
-    exception_handler: Optional[Any] = None,
+    exit_signals: set[signal.Signals] | None = None,
+    exception_handler: Any | None = None,
 ) -> None:
     """
     Set global exception handler and signal handlers for a specified event loop.
@@ -112,7 +113,7 @@ def prepare_loop(
     log.info("Asyncio exception handlers set")
 
 
-async def cancel_tasks(tasks: list[Union[asyncio.Future[Any], asyncio.Task[Any]]]) -> None:
+async def cancel_tasks(tasks: list[asyncio.Future[Any] | asyncio.Task[Any]]) -> None:
     """Cancel outstanding tasks.
 
     Parameters

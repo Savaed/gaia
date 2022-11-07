@@ -1,6 +1,6 @@
 """Auto-updating progress allows adding new tasks and displays a progress bar(s) based on rich."""
 
-from typing import Any, Optional
+from typing import Any
 
 from rich import progress
 from rich.table import Column
@@ -21,11 +21,7 @@ class JobsCompleteColumn(progress.MofNCompleteColumn):
         "Y": 10e24,
     }
 
-    def __init__(
-        self,
-        separator: str = "/",
-        table_column: Optional[Column] = None,
-    ) -> None:
+    def __init__(self, separator: str = "/", table_column: Column | None = None) -> None:
         self.separator = separator
         super().__init__(table_column=table_column)
 
