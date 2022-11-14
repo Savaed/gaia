@@ -45,7 +45,7 @@ def configure_logging() -> None:
                                 structlog.processors.CallsiteParameter.FUNC_NAME,
                                 structlog.processors.CallsiteParameter.THREAD_NAME,
                                 structlog.processors.CallsiteParameter.LINENO,
-                            ]
+                            ],
                         ),
                         structlog.processors.KeyValueRenderer(
                             sort_keys=True,
@@ -65,7 +65,7 @@ def configure_logging() -> None:
                                 structlog.processors.CallsiteParameter.FUNC_NAME,
                                 structlog.processors.CallsiteParameter.THREAD_NAME,
                                 structlog.processors.CallsiteParameter.LINENO,
-                            ]
+                            ],
                         ),
                         structlog.processors.JSONRenderer(sort_keys=True),
                     ],
@@ -102,7 +102,7 @@ def configure_logging() -> None:
                     "propagate": True,
                 },
             },
-        }
+        },
     )
 
     structlog.configure_once(

@@ -39,3 +39,9 @@ repos:
     rev: v0.990
     hooks:
       - id: mypy
+
+  - repo: https://github.com/asottile/add-trailing-comma
+    rev: v2.3.0
+    hooks:
+      - id: add-trailing-comma
+        args: ["--py36-plus"]
