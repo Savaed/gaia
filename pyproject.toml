@@ -18,7 +18,8 @@ test = [
   "pytest",
   "coverage",
   "covdefaults",
-  "pytest-mock"
+  "pytest-mock",
+  ""
 ]
 
 [tool.coverage.run]
