@@ -10,16 +10,18 @@ authors = [{ name = "Krzysztof Gonet", email = "36476874+Savaed@users.noreply.gi
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "structlog"
+    "structlog",
+    "aiohttp",
+    "rich"
 ]
 
 [project.optional-dependencies]
-test = [
+dev = [
   "pytest",
   "coverage",
   "covdefaults",
   "pytest-mock",
-  ""
+  "pytest-asyncio",
 ]
 
 [tool.coverage.run]
