@@ -1,13 +1,13 @@
 from enum import Enum
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
 
-from gaia.api import ApiError, download
+from gaia.api import ApiError, NasaApi, download
 
 
-TEST_URL = "https://www.test.com"
+TEST_URL = "https://www.test-api.com"
 
 
 class HttpMethod(Enum):
@@ -15,46 +15,24 @@ class HttpMethod(Enum):
 
 
 def aiohttp_error(error_type, status):
-    """Return an aiohttp error based on the specified error type"""
+    """Return an `aiohttp` error object based on the specified error type."""
     error_msg = "test error"
     match error_type:
         case aiohttp.ClientResponseError:
             request_info = aiohttp.RequestInfo(TEST_URL, HttpMethod.GET.value, None, None)
             return aiohttp.ClientResponseError(request_info, None, message=error_msg, status=status)
         case aiohttp.ClientOSError:  # pragma: no cover
-            return aiohttp.ClientOSError(-1, error_msg)
+            return aiohttp.ClientOSError(status, error_msg)
 
 
-@pytest.fixture
-def http_response(request):
-    """
-    Mock http method on `aiohttp.ClientSession()` so it
-    will return specified response or raise an error.
-    """
-    response, error, method, status = request.param
-    mock = aiohttp.ClientSession
-    method_mock = MagicMock()
-
-    if error:
-        method_mock.return_value.__aenter__.return_value.read.side_effect = [error]
-
-    method_mock.return_value.__aenter__.return_value.status = status or 200
-    method_mock.return_value.__aenter__.return_value.read.return_value = response
-    setattr(mock, method.value, method_mock)
-    return mock
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "http_response",
-    [
-        (None, aiohttp.ClientOSError(1, "error"), HttpMethod.GET, 200),
-        (None, aiohttp_error(aiohttp.ClientResponseError, 400), HttpMethod.GET, 400),
-        (None, aiohttp_error(aiohttp.ClientResponseError, 401), HttpMethod.GET, 401),
-        (None, aiohttp_error(aiohttp.ClientResponseError, 403), HttpMethod.GET, 403),
-        (None, aiohttp_error(aiohttp.ClientResponseError, 404), HttpMethod.GET, 404),
+@pytest.fixture(
+    params=[
+        (aiohttp_error(aiohttp.ClientOSError, 999), HttpMethod.GET),
+        (aiohttp_error(aiohttp.ClientResponseError, 400), HttpMethod.GET),
+        (aiohttp_error(aiohttp.ClientResponseError, 401), HttpMethod.GET),
+        (aiohttp_error(aiohttp.ClientResponseError, 403), HttpMethod.GET),
+        (aiohttp_error(aiohttp.ClientResponseError, 404), HttpMethod.GET),
     ],
-    indirect=True,
     ids=[
         "generic_os_error",
         "http_400_bad_request",
@@ -63,15 +41,73 @@ def http_response(request):
         "http_404_not_found",
     ],
 )
-async def test_download__invalid_request(http_response):
-    """Test check whether ApiError is raised when the request is malformed."""
-    with pytest.raises(ApiError):
-        await download(TEST_URL, aiohttp.ClientSession())
+def error_response(request):
+    error, http_method = request.param
+    return MagicMock(**{f"{http_method.value}.return_value.__aenter__.side_effect": error})
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("http_response", [(b"test", None, HttpMethod.GET, 200)], indirect=True)
-async def test_download__return_correct_response(http_response):
+async def test_download__http_or_os_error(error_response):
+    """Test check whether ApiError is raised for OS error or malformed request."""
+    with pytest.raises(ApiError):
+        await download(TEST_URL, error_response)
+
+
+@pytest.mark.asyncio
+async def test_download__return_correct_response():
     """Test check whether the correct response is returned."""
-    result = await download(TEST_URL, aiohttp.ClientSession())
-    assert result == b"test"
+    expected = b"c1,c2\n1,2"
+    response_mock = MagicMock(**{"read": AsyncMock(return_value=expected), "status": 200})
+    session_mock = MagicMock(**{"get.return_value.__aenter__.return_value": response_mock})
+
+    result = await download(TEST_URL, session_mock)
+
+    assert result == expected
+
+
+class TestNasaApi:
+    """Unit tests for `gaia.api.NasaApi` class."""
+
+    @pytest.mark.asyncio
+    async def test_download__http_or_os_error(self, mocker):
+        """Test check whether ApiError is raised for any underlying error (HTTP or OS-related)."""
+        error = ApiError(message="test", status=400, url=TEST_URL)
+        mocker.patch("gaia.api.download", side_effect=error)
+
+        async with aiohttp.ClientSession() as session:
+            with pytest.raises(ApiError):
+                await NasaApi(TEST_URL, session).download("table1", {"col1", "col2"})
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "response_body,expected",
+        [
+            (
+                b"ERROR<br>\nError Type: UserError - 'table' parameter<br>\nMessage:    'x' is not a valid table.",  # noqa
+                "'x' is not a valid table",
+            ),
+            (
+                b"ERROR<br>\nError Type: SystemError<br>\nMessage:    Error 907: HY000 :[Oracle][ODBC][Ora]ORA-00907: missing right parenthesis . FAIL",  # noqa
+                ".*ORA-00907.*",
+            ),
+        ],
+        ids=["table_not_found", "invalid_columns_query"],
+    )
+    async def test_download__error_response_http_200(self, response_body, expected, mocker):
+        """Test check whether ApiError is raised for HTTP 200 OK error response."""
+        mocker.patch("gaia.api.download", return_value=response_body)
+
+        with pytest.raises(ApiError, match=expected):
+            async with aiohttp.ClientSession() as session:
+                await NasaApi(TEST_URL, session).download("table1", {"c1", "c2"})
+
+    @pytest.mark.asyncio
+    async def test_download__return_table(self, mocker):
+        """Test check whether the correct table content is returned."""
+        table_content = b"col1,col2\n1,2"
+        mocker.patch("gaia.api.download", return_value=table_content)
+
+        async with aiohttp.ClientSession() as session:
+            result = await NasaApi(TEST_URL, session).download("table1", {"col1", "col2"})
+
+        assert result == table_content

@@ -39,7 +39,6 @@ repos:
     rev: v0.991
     hooks:
       - id: mypy
-        args: ["gaia"]
 
   - repo: https://github.com/asottile/add-trailing-comma
     rev: v2.3.0
