@@ -10,18 +10,18 @@ authors = [{ name = "Krzysztof Gonet", email = "36476874+Savaed@users.noreply.gi
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "structlog",
     "aiohttp",
-    "rich"
+    "structlog",
+    "tensorflow",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest",
-  "coverage",
   "covdefaults",
-  "pytest-mock",
+  "coverage",
+  "pytest",
   "pytest-asyncio",
+  "pytest-mock",
 ]
 
 [tool.pytest.ini_options]
@@ -41,7 +41,8 @@ line-length = 100
 target-version = ["py310"]
 
 [tool.mypy]
-# plugins = ["numpy.typing.mypy_plugin"]
+mypy_path = "."
+explicit_package_bases = true
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
