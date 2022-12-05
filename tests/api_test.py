@@ -106,12 +106,14 @@ class TestNasaApi:
     async def test_download__return_table(self, mocker):
         """Test check whether the correct table content is returned."""
         table_content = b"col1,col2\n1,2"
+        table = "table"
         mocker.patch("gaia.api.download", return_value=table_content)
 
         async with aiohttp.ClientSession() as session:
-            result = await NasaApi(TEST_URL, session).download("table1", {"col1", "col2"})
+            table_name, result = await NasaApi(TEST_URL, session).download(table, {"col1", "col2"})
 
         assert result == table_content
+        assert table_name == table
 
 
 @pytest.mark.parametrize("cadence", [Cadence.LONG, Cadence.SHORT])

@@ -61,7 +61,12 @@ class NasaApi:
         self._base_url = base_url
         self._session = session
 
-    async def download(self, table: str, columns: set[str], data_format: str = "csv") -> bytes:
+    async def download(
+        self,
+        table: str,
+        columns: set[str],
+        data_format: str = "csv",
+    ) -> tuple[str, bytes]:
         """Download a NASA table.
 
         Note that not all tables from the NASA archive are available via API.
@@ -77,11 +82,11 @@ class NasaApi:
             ApiError: Underlying OS error or malformed request (e.g. HTTP 404 Not Found)
 
         Returns:
-            bytes: Table content
+            tuple[str, bytes]: Table name and content
         """
         data = await download(self._create_url(table, columns, data_format), self._session)
         self._raise_for_error(data)
-        return data
+        return table, data
 
     def _raise_for_error(self, response: bytes) -> None:
         if b"ERROR" in response:
