@@ -6,9 +6,13 @@ Kepler light curves: https://archive.stsci.edu/missions-and-data/kepler/kepler-b
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import aiohttp
+
+from gaia.enums import Cadence
+from gaia.quarters import get_quarter_prefixes
 
 
 @dataclass
@@ -103,3 +107,18 @@ class NasaApi:
         columns_str = ",".join(columns)
         url = f"{self._base_url}?table={table}{f'&select={columns_str}' or ''}&format={data_format}"
         return f"{url}&where={query:r}" if query else url
+
+
+def check_kepid(kepid: int) -> None:
+    if not 0 < kepid < 1_000_000_000:
+        raise ValueError(f"'kepid' must be in range 1 to 999 999 999 inclusive, but got {kepid=}")
+
+
+def create_mast_urls(kepid: int, cadence: Cadence, base_url: str) -> Iterator[str]:
+    check_kepid(kepid)
+    if not base_url:
+        raise ValueError("'base_url' cannot be empty")
+
+    kepid_str = f"{kepid:09}"
+    url = f"{base_url.strip('/')}/{kepid_str[:4]}/{kepid_str}//kplr{kepid_str}"
+    yield from (f"{url}-{prefix}_{cadence.value}.fits" for prefix in get_quarter_prefixes(cadence))

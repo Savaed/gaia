@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 
-from gaia.api import ApiError, NasaApi, download
+from gaia.api import ApiError, NasaApi, create_mast_urls, download
+from gaia.enums import Cadence
 
 
 TEST_URL = "https://www.test-api.com"
@@ -111,3 +112,60 @@ class TestNasaApi:
             result = await NasaApi(TEST_URL, session).download("table1", {"col1", "col2"})
 
         assert result == table_content
+
+
+@pytest.mark.parametrize("cadence", [Cadence.LONG, Cadence.SHORT])
+@pytest.mark.parametrize("kepid", [-1, 0, 1_000_000_000])
+def test_create_mast_urls__invalid_kepid(kepid, cadence):
+    with pytest.raises(ValueError):
+        next(create_mast_urls(kepid, cadence, base_url="sdfsf"))
+
+
+@pytest.mark.parametrize("cadence", [Cadence.LONG, Cadence.SHORT])
+def test_create_mast_urls__empty_base_url(cadence):
+    with pytest.raises(ValueError, match="'base_url' cannot be empty"):
+        next(create_mast_urls(123, cadence, base_url=""))
+
+
+# TODO:Jakies takie to nie do konca mi sie podoba, ale działa
+
+
+def x():
+    return [
+        (1, Cadence.LONG, "base", ("1",), ["base/0000/000000001//kplr000000001-1_llc.fits"]),
+        (
+            1,
+            Cadence.LONG,
+            "base",
+            ("1", "2"),
+            [
+                "base/0000/000000001//kplr000000001-1_llc.fits",
+                "base/0000/000000001//kplr000000001-2_llc.fits",
+            ],
+        ),
+        (1, Cadence.SHORT, "base", ("1",), ["base/0000/000000001//kplr000000001-1_slc.fits"]),
+        (
+            1,
+            Cadence.SHORT,
+            "base",
+            ("1", "2"),
+            [
+                "base/0000/000000001//kplr000000001-1_slc.fits",
+                "base/0000/000000001//kplr000000001-2_slc.fits",
+            ],
+        ),
+    ]
+
+
+@pytest.mark.parametrize("kepid,cadence,base_url,prefixes,expected", x())
+def test_create_mast_urls__return_correct_urls(
+    kepid,
+    cadence,
+    base_url,
+    prefixes,
+    expected,
+    mocker,
+):
+    mocker.patch("gaia.api.get_quarter_prefixes", return_value=prefixes)
+    result = list(create_mast_urls(kepid, cadence, base_url))
+    assert result == expected
