@@ -39,16 +39,19 @@ def read(src: str, mode: FileMode = FileMode.READ_BINARY) -> AnyStr:
 
 
 def write(dest: str, data: AnyStr, mode: FileMode = FileMode.WRITE_BINARY) -> None:
-    """Write data to a file in local environment, cloud (GCP, AWS) or HDFS.
+    """Write data to a file in the local environment, cloud (GCP, AWS) or HDFS.
+
+    In some environments, the destination file will be created if it does not exist (e.g. GCP),
+    however in the local environment, this function will raise FileNotFoundError
 
     Args:
-        dest (str): Path to the destination file. It must exist
+        dest (str): Path to the destination file
         data (AnyStr): Data to write, bytes or string
         mode (FileMode, optional): Write mode. Defaults to `FileMode.WRITE_BINARY`.
 
     Raises:
-        FileNotFoundError: The requested file was not found
         PermissionError: No permissions for file or cloud environment
+        FileNotFoundError: File not found (in the local environment)
     """
     try:
         with tf.io.gfile.GFile(dest, mode.value) as gf:
