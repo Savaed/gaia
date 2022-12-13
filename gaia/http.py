@@ -5,7 +5,7 @@ import aiohttp
 
 @dataclass
 class ApiError(Exception):
-    """Raised when the HTTP request to the NASA API is incorrect."""
+    """Raised when the HTTP request to the API is incorrect."""
 
     message: str
     status: int
