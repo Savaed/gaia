@@ -9,7 +9,7 @@ class ApiError(Exception):
 
     message: str
     status: int
-    url: str | None
+    url: str | None = None
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.status}: {self.url or ''} {self.message}"
@@ -30,7 +30,7 @@ async def download(url: str, session: aiohttp.ClientSession) -> bytes:
     """
     try:
         async with session.get(url, raise_for_status=True) as resp:
-            return await resp.read()  # type: ignore
+            return await resp.read()  # type: ignore[no-any-return]
     except aiohttp.ClientOSError as ex:
         raise ApiError(message=ex.strerror, status=ex.errno, url=url)
     except aiohttp.ClientResponseError as ex:
