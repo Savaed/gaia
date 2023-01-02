@@ -31,7 +31,7 @@ pythonpath = "."
 
 [tool.coverage.run]
 plugins = ["covdefaults"]
-omit = ["**/conftest.py"]
+omit = ["**/conftest.py", "**/progress.py"]
 
 [tool.isort]
 profile = "black"
