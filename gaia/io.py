@@ -1,7 +1,7 @@
 """I/O functions to use in local or cloud environments (GCP, AWS) or HDFS."""
 
 from enum import Enum
-from typing import AnyStr
+from typing import AnyStr, Protocol
 
 import tensorflow as tf
 from tensorflow.python.framework.errors_impl import NotFoundError, PermissionDeniedError
@@ -60,3 +60,23 @@ def write(dest: str, data: AnyStr, mode: FileMode = FileMode.WRITE_BINARY) -> No
         raise FileNotFoundError(dest)
     except PermissionDeniedError as ex:
         raise PermissionError(ex)
+
+
+class Saver(Protocol):
+    def save_table(self, name: str, data: bytes) -> None:
+        ...
+
+    def save_time_series(self, name: str, data: bytes) -> None:
+        ...
+
+
+class FileSaver:
+    def __init__(self, tables_dir: str, time_series_dir: str) -> None:
+        self._tables_dir = tables_dir.rstrip("/")
+        self._time_series_dir = time_series_dir.rstrip("/")
+
+    def save_table(self, name: str, data: bytes) -> None:
+        write(f"{self._tables_dir}/{name}", data)
+
+    def save_time_series(self, name: str, data: bytes) -> None:
+        write(f"{self._time_series_dir}/{name}", data)
