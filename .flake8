@@ -1,4 +1,4 @@
 [flake8]
-ignore = ['E231', 'E241']
+ignore = E203, E231, E241
 max-line-length = 100
 count = true
