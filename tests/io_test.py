@@ -1,10 +1,14 @@
 from pathlib import Path
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
 import tensorflow.python.framework.errors_impl as tf_error
+from astropy.io import fits
+from astropy.table import Table
 
-from gaia.io import FileMode, FileSaver, read, write
+from gaia.io import FileMode, FileSaver, read, read_fits_table, write
+from tests.conftest import assert_dict_with_numpy_equal
 
 
 TEST_FILEPATH = "a/b/c.txt"
@@ -142,3 +146,93 @@ class TestFileSaver:
         name = "tab1.csv"
         saver.save_time_series(name, data)
         assert Path(f"{saver._time_series_dir}/{name}").read_bytes() == data
+
+
+def test_read_fits_table__file_not_found(mocker):
+    """Test check whether FileNotFoundError is raised when no file found."""
+    mocker.patch("gaia.io.read", side_effect=FileNotFoundError())
+    with pytest.raises(FileNotFoundError):
+        read_fits_table(TEST_FILEPATH, "test")
+
+
+def test_read_fits_table__permission_denied(mocker):
+    """Test check whether PermissionError is raised when the user has no access to the file."""
+    mocker.patch("gaia.io.read", side_effect=PermissionError())
+    with pytest.raises(PermissionError):
+        read_fits_table(TEST_FILEPATH, "test")
+
+
+def fits_content(fields, data, hdu_extension):
+    hdu1 = fits.PrimaryHDU()
+    table = Table(names=fields, data=np.stack(data, axis=1))
+    hdu2 = fits.BinTableHDU(name=hdu_extension, data=table)
+    return fits.HDUList([hdu1, hdu2])
+
+
+TEST_HDU_EXTENSION = "TEST_HEADER"
+
+
+@pytest.fixture
+def fits_file():
+    """Return a test FITS file with one extension which is a table with columns 'a', 'b'.
+
+    The extension name is specified in the `TEST_HDU_EXTENSION` constant.
+
+    The table is as follows:
+    +-------+
+    | a | b |
+    +=======+
+    | 1 | 4 |
+    | 2 | 5 |
+    | 3 | 6 |
+    +-------+
+    """
+    data = ([1, 2, 3], [4, 5, 6])
+    fields = ("a", "b")
+    return fits_content(fields, data, TEST_HDU_EXTENSION)
+
+
+def test_read_fits_table__invalid_header(mocker, fits_file):
+    """Test check whether KeyError is raised when specified HDU extension (header) not found."""
+    mocker.patch("gaia.io.read", return_value=b"")
+    mocker.patch("gaia.io.fits.open", return_value=fits_file)
+    with pytest.raises(KeyError):
+        read_fits_table(TEST_FILEPATH, f"{TEST_HDU_EXTENSION}_INVALID")
+
+
+def test_read_fits_table__unsupported_fields(fits_file, mocker):
+    """Test check whether ValueError is raised when specified fields are not present in a file."""
+    mocker.patch("gaia.io.read", return_value=b"")
+    mocker.patch("gaia.io.fits.open", return_value=fits_file)
+    with pytest.raises(ValueError, match="Fields .* not present"):
+        read_fits_table(TEST_FILEPATH, TEST_HDU_EXTENSION, fields={"a", "c"})
+
+
+@pytest.mark.parametrize(
+    "fields,expected",
+    [
+        ({"a"}, {"a": np.array([1, 2, 3])}),
+        ({"a", "b"}, {"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}),
+    ],
+    ids=["one_of_two", "all"],
+)
+def test_read_fits_table__read_specific_fields(fields, expected, fits_file, mocker):
+    """Test check whether only specific fields are read from a file."""
+    mocker.patch("gaia.io.read", return_value=b"")
+    mocker.patch("gaia.io.fits.open", return_value=fits_file)
+    result = read_fits_table(TEST_FILEPATH, TEST_HDU_EXTENSION, fields)
+    assert_dict_with_numpy_equal(result, expected)
+
+
+@pytest.mark.parametrize("fields", [None, set()], ids=["none", "empty_set"])
+@pytest.mark.parametrize(
+    "expected",
+    [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}],
+    ids=["two_columns_file"],
+)
+def test_read_fits_table__read_all_fields_by_default(fields, expected, fits_file, mocker):
+    """Test check whether all fields are read when `fields` is an empty set or None."""
+    mocker.patch("gaia.io.read", return_value=b"")
+    mocker.patch("gaia.io.fits.open", return_value=fits_file)
+    result = read_fits_table(TEST_FILEPATH, TEST_HDU_EXTENSION, fields)
+    assert_dict_with_numpy_equal(result, expected)

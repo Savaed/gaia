@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from enum import Enum
 from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest
 from pyparsing import Any
 
@@ -35,3 +36,14 @@ def enum_short_id(value: Enum) -> str:
 
 def prefix_id(value: Any, prefix: str) -> str:
     return f"{prefix}-{str(value)}"
+
+
+def assert_dict_with_numpy_equal(a: dict[Any, Any], b: dict[Any, Any]) -> None:
+    """
+    Assert that two dictionaries with NumPy arrays as their values are equal
+    (have the same keys and value but not necessarily in the same order of keys).
+    """
+    sorted_a = dict(sorted(a.items()))
+    sorted_b = dict(sorted(b.items()))
+    assert sorted_a.keys() == sorted_b.keys()
+    assert all([np.array_equal(r, e) for r, e in zip(sorted_a.values(), sorted_b.values())])

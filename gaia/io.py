@@ -1,9 +1,11 @@
 """I/O functions to use in local or cloud environments (GCP, AWS) or HDFS."""
 
+import io
 from enum import Enum
-from typing import AnyStr, Protocol
+from typing import Any, AnyStr, Protocol
 
 import tensorflow as tf
+from astropy.io import fits
 from tensorflow.python.framework.errors_impl import NotFoundError, PermissionDeniedError
 
 
@@ -23,7 +25,7 @@ def read(src: str, mode: FileMode = FileMode.READ_BINARY) -> AnyStr:
         mode (FileMode, optional): Read mode. Defaults to `FileMode.READ_BINARY`.
 
     Raises:
-        FileNotFoundError: The requested file was not found
+        FileNotFoundError: File not found
         PermissionError: No permissions for file or cloud environment
 
     Returns:
@@ -42,7 +44,7 @@ def write(dest: str, data: AnyStr, mode: FileMode = FileMode.WRITE_BINARY) -> No
     """Write data to a file in the local environment, cloud (GCP, AWS) or HDFS.
 
     In some environments, the destination file will be created if it does not exist (e.g. GCP),
-    however in the local environment, this function will raise FileNotFoundError
+    however in the local environment, this function will raise FileNotFoundError.
 
     Args:
         dest (str): Path to the destination file
@@ -80,3 +82,34 @@ class FileSaver:
 
     def save_time_series(self, name: str, data: bytes) -> None:
         write(f"{self._time_series_dir}/{name}", data)
+
+
+def read_fits_table(src: str, header: str, fields: set[str] | None = None) -> dict[str, Any]:
+    """Read the table from a FITS file under the specified `header`.
+
+    Args:
+        src (str): Path to the source file
+        header (str): FITS header (HDU extension) to read from
+        fields (set[str] | None, optional): Fields to preserve in the output dictionary.
+            If None or empty set then all available fields are read. Defaults to None.
+
+    Raises:
+        ValueError: Any of specified fields are not present in the FITS file
+        KeyError: FITS header not found
+
+    Returns:
+        dict[str, Any]: Table from FITS file as dictionary 'file_field -> data'
+    """
+    with fits.open(io.BytesIO(read(src))) as hdul:  # type: ignore[arg-type]
+        data = hdul[header]
+        columns = {col.name for col in data.columns}
+
+        if fields:
+            not_existent_fields = fields - columns
+            if not_existent_fields:
+                s = ", ".join(not_existent_fields)
+                raise ValueError(f"Fields {s} not present in the FITS file")
+        else:
+            fields = columns
+
+        return {col: data.data[col] for col in columns if col in fields}
