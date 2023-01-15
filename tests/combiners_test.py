@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from gaia.data.combiners import CombinerError, FitsCombiner
+from gaia.data.combiners import CombinerError, FitsCombiner, group_kepler_paths
 
 
 class TestKeplerFitsCombiner:
@@ -84,3 +84,48 @@ class TestKeplerFitsCombiner:
         expected = dict.fromkeys(("1", "2", "3"), self.SINGLE_FITS_DICT)
         result = await combiner.combine(paths)
         assert result == expected
+
+
+@pytest.mark.parametrize("directory", ["", "abc"], ids=["empty", "not_found"])
+def test_group_kepler_paths__directory_not_found_or_empty(directory):
+    """
+    Test check whether an empty dictionary is returned when root data directory is not found or
+    empty.
+    """
+    result = group_kepler_paths(directory, r"(?<=kplr)\d{9}")
+    assert not result
+
+
+@pytest.fixture
+def tmp_dir(tmp_path):
+    """Prepare a temporary directory with empty test FITS files."""
+    (tmp_path / "kplr123456789-123456789_llc.fits").touch()
+    (tmp_path / "kplr123456789-111111111_slc.fits").touch()
+    (tmp_path / "kplr987654321-987654321_llc.fits").touch()
+    return tmp_path
+
+
+@pytest.mark.asyncio
+async def test_group_kepler_paths__cannot_retrieve_kepid(tmp_dir):
+    """Test check whether paths for which cannot retrieve kepid are not included in the output."""
+    result = group_kepler_paths(str(tmp_dir), r"llc")
+    expected = {
+        "llc": [
+            f"{tmp_dir}/kplr123456789-123456789_llc.fits",
+            f"{tmp_dir}/kplr987654321-987654321_llc.fits",
+        ],
+    }
+    assert dict(sorted(result.items())) == expected
+
+
+def test_group_kepler_paths__return_grouped_paths(tmp_dir):
+    """Test check whether the paths are grouped correctly."""
+    result = group_kepler_paths(str(tmp_dir), r"(?<=kplr)\d{9}")
+    expected = {
+        "123456789": [
+            f"{tmp_dir}/kplr123456789-111111111_slc.fits",
+            f"{tmp_dir}/kplr123456789-123456789_llc.fits",
+        ],
+        "987654321": [f"{tmp_dir}/kplr987654321-987654321_llc.fits"],
+    }
+    assert dict(sorted(result.items())) == dict(sorted(expected.items()))

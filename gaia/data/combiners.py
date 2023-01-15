@@ -10,12 +10,14 @@ is split into many files for each observation quarter for every single KOI.
 import asyncio
 import concurrent.futures
 import re
+from collections import defaultdict
 from collections.abc import Iterable
 from functools import singledispatchmethod
 from typing import Any, Generic, Protocol, TypeAlias, TypedDict, TypeVar
 
 import numpy as np
 import structlog
+import tensorflow as tf
 
 from gaia.io import read_fits_table
 
@@ -120,3 +122,31 @@ class FitsCombiner(Generic[T]):
             raise CombinerError("Quarter prefix extraction failed for all paths")
 
         return prefixes, filtered_paths
+
+
+def group_kepler_paths(data_dir: str, kepid_pattern: str) -> dict[str, list[str]]:
+    """Group Kepler time series FITS file paths into the dictionary where KIC (kepid) is the key.
+
+    Args:
+        data_dir (str): Root data directory path
+        kepid_pattern (str): Regex pattern to extract kepid from file paths
+
+    Returns:
+        dict[str, list[str]]: Dictionary 'kepid' -> ['file_path1', 'file_path2', ...]
+    """
+    log.info("Grouping paths based on kepid", data_dir=data_dir)
+    groups = defaultdict(list)
+    paths = tf.io.gfile.glob(f"{data_dir.rstrip('/')}/*.fits")
+    pattern = re.compile(kepid_pattern)
+    log.info(f"Found {len(paths)} paths")
+
+    for path in paths:
+        try:
+            kepid = pattern.search(path).group()  # type: ignore[union-attr]
+        except AttributeError:
+            log.warning(f"Cannot retrieve kepid from {path!r} using a pattern {kepid_pattern!r}")
+        else:
+            groups[kepid].append(path)
+
+    log.info(f"Paths grouped into {len(groups)} groups")
+    return groups
