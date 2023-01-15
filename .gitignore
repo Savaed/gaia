@@ -6,6 +6,5 @@
 .tox/
 .vscode/
 coverage*
-data/
 outputs/
 logs/
