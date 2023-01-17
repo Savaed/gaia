@@ -24,8 +24,6 @@ from gaia.io import read_fits_table
 
 log = structlog.stdlib.get_logger()
 
-Segments: TypeAlias = np.ndarray | list[np.ndarray]
-
 T = TypeVar("T", bound=dict[str, Any])
 
 # Represents time series observed at specific periods, e.g. quarters for Kepler time series
@@ -33,9 +31,9 @@ IntervalTimeSeries: TypeAlias = dict[str, dict[str, T]]
 
 
 class KeplerTimeSeries(TypedDict):
-    TIME: Segments
-    SAP_FLUX: Segments
-    PDCSAP_FLUX: Segments
+    TIME: list[np.ndarray]
+    SAP_FLUX: list[np.ndarray]
+    PDCSAP_FLUX: list[np.ndarray]
 
 
 class CombinerError(Exception):
@@ -43,7 +41,7 @@ class CombinerError(Exception):
 
 
 class FilesCombiner(Protocol[T]):
-    async def combine(self, paths: Iterable[str]) -> dict[str, dict[str, T]]:
+    async def combine(self, paths: Iterable[str]) -> IntervalTimeSeries[T]:
         ...
 
 
