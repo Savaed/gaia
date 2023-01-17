@@ -3,6 +3,7 @@ from unittest.mock import Mock
 import pytest
 
 from gaia.data.combiners import CombinerError, FitsCombiner, group_kepler_paths
+from tests.conftest import assert_dict_with_list_equal_no_order
 
 
 class TestKeplerFitsCombiner:
@@ -115,7 +116,7 @@ async def test_group_kepler_paths__cannot_retrieve_kepid(tmp_dir):
             f"{tmp_dir}/kplr987654321-987654321_llc.fits",
         ],
     }
-    assert dict(sorted(result.items())) == expected
+    assert_dict_with_list_equal_no_order(result, expected)
 
 
 def test_group_kepler_paths__return_grouped_paths(tmp_dir):
@@ -123,9 +124,9 @@ def test_group_kepler_paths__return_grouped_paths(tmp_dir):
     result = group_kepler_paths(str(tmp_dir), r"(?<=kplr)\d{9}")
     expected = {
         "123456789": [
-            f"{tmp_dir}/kplr123456789-111111111_slc.fits",
             f"{tmp_dir}/kplr123456789-123456789_llc.fits",
+            f"{tmp_dir}/kplr123456789-111111111_slc.fits",
         ],
         "987654321": [f"{tmp_dir}/kplr987654321-987654321_llc.fits"],
     }
-    assert dict(sorted(result.items())) == dict(sorted(expected.items()))
+    assert_dict_with_list_equal_no_order(result, expected)

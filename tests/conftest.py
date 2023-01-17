@@ -47,3 +47,16 @@ def assert_dict_with_numpy_equal(a: dict[Any, Any], b: dict[Any, Any]) -> None:
     sorted_b = dict(sorted(b.items()))
     assert sorted_a.keys() == sorted_b.keys()
     assert all([np.array_equal(r, e) for r, e in zip(sorted_a.values(), sorted_b.values())])
+
+
+def assert_dict_with_list_equal_no_order(
+    d1: dict[Any, list[Any]],
+    d2: dict[Any, list[Any]],
+) -> None:
+    """
+    Assert that two dictionaries with values ​​as lists have the same values ​​regardless of
+    their order.
+    """
+    tmp_d1 = {k: set(v) for k, v in d1.items()}
+    tmp_d2 = {k: set(v) for k, v in d2.items()}
+    assert tmp_d1 == tmp_d2
