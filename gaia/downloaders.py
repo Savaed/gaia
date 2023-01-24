@@ -51,6 +51,12 @@ class KeplerDownloader:
         self._series_meta_path = home / f"{self.__class__.__name__}_series.txt"
 
     async def download_tables(self, requests: Iterable[TableRequest]) -> None:
+        """Download NASA tables from the official archive to the local or external file system
+        (e.g. HDFS or GCS).
+
+        Arguments:
+            requests (Iterable [TableRequest]): Requests that specify what tables are download
+        """
         async with aiohttp.ClientSession() as sess:
             for request in requests:
                 try:
@@ -59,7 +65,6 @@ class KeplerDownloader:
                 except ApiError as ex:
                     log.warning("Cannot download NASA table", reason=ex)
                     continue
-
                 try:
                     self._saver.save_table(request.name, table)
                 except Exception as ex:
