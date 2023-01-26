@@ -19,25 +19,36 @@ def test_check_kepid__valid_input():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "n,results",
+    "retries,results",
     [(1, [Exception(), "ok"]), (2, [Exception(), Exception(), "ok"])],
     ids=[1, 2],
 )
-async def test_retry__retrying_specified_times(n, results, mocker):
-    """Test check whether retries specified number of times."""
+async def test_retry__retrying_specified_times(retries, results, mocker):
+    """Test that function is retrying the specified number of times."""
     mocker.patch("gaia.utils.asyncio.sleep")
     foo = AsyncMock(side_effect=results)
-    deco = retry(n)(foo)
+    deco = retry(retries)(foo)
     await deco()
-    assert foo.await_count == n + 1
+    assert foo.await_count == retries + 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("retries", [-1, 0])
 async def test_retry__retries_number_less_than_1(retries):
-    """Test that ValueError is raised when specified retries number is less than 1."""
+    """Test that ValueError is raised when retries number is less than 1."""
     with pytest.raises(ValueError, match="'retries' must be at least 1"):
 
         @retry(retries)
-        async def _():
+        async def _():  # pragma: no cover
             ...
+
+
+@pytest.mark.asyncio
+async def test_retry__raise_on_retries_limit(mocker):
+    """Test that error is raised when the retry limit is reached."""
+    mocker.patch("gaia.utils.asyncio.sleep")
+    foo = AsyncMock(side_effect=[KeyError("test error"), KeyError("test error")])
+    deco = retry(1)(foo)
+
+    with pytest.raises(KeyError, match="test error"):
+        await deco()
