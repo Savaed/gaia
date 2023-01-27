@@ -12,7 +12,7 @@ class ApiError(Exception):
     url: str | None = None
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"{self.status}: {self.url or ''} {self.message}"
+        return f"{self.status}: {self.message} {self.url or ''}"
 
 
 async def download(url: str, session: aiohttp.ClientSession) -> bytes:
