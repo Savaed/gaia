@@ -9,7 +9,7 @@ class Cadence(Enum):
     LONG = "llc"
     """Observations with an interval of ~29.4 minutes."""
     SHORT = "slc"
-    """Observations with an interval of 1 minute."""
+    """Observations with an interval of ~1 minute."""
 
 
 class TceLabel(Enum):

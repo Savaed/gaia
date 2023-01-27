@@ -28,6 +28,8 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
+# TODO: Testing decorated functions is a bit tricky. Search for a better solution
+# TODO: Allow to use without parentheses
 def retry(
     retries: int = 5,
     max_seconds: int = 64,
@@ -35,6 +37,7 @@ def retry(
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """A decorator to retry an asynchronous function with exponential backoff.
 
+    When retry limit is reached this re-raise the original error.
     Backoff is based on https://cloud.google.com/iot/docs/how-tos/exponential-backoff
 
     Args:
@@ -67,7 +70,7 @@ def retry(
                         log.error("Retries limit reached")
                         raise
 
-                    log.warning(f"Retrying {n}/{retries}", backoff_seconds=round(backoff, 2))
+                    log.info(f"Retrying {n}/{retries}", backoff_seconds=round(backoff, 2))
                     await asyncio.sleep(backoff)
 
         return wrapped
