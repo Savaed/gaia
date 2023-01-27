@@ -60,7 +60,9 @@ def log_exception(_: _EventLoop, context: dict[str, Any]) -> None:
         _ (_EventLoop): Event loop, unused
         context (dict[str, Any]): Exception info with at least 'message' key
     """
-    log.error(f"Exception caught: {context.get('exception', context['message'])}")
+    # In case of context['excpetion'] is a bare Exception evaluated to an empty string
+    exception = context.get("exception", None)
+    log.error(f"Exception caught: {str(exception) or context['message'] }")
 
 
 async def cancel_tasks(tasks: _CancellableList) -> None:
