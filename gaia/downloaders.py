@@ -23,6 +23,7 @@ import structlog
 from gaia.enums import Cadence
 from gaia.http import ApiError, download
 from gaia.io import Saver
+from gaia.progress import ProgressBar
 from gaia.quarters import get_quarter_prefixes
 from gaia.utils import retry
 
@@ -164,15 +165,15 @@ class KeplerDownloader:
 
     def _add_save_task(
         self,
-        tasks: _SavingTasks,
+        saving_tasks: _SavingTasks,
         loop: asyncio.AbstractEventLoop,
         pool: concurrent.futures.ThreadPoolExecutor,
         url: str,
         data: bytes,
     ) -> None:
         filename = url.split("/")[-1]
-        item = filename, loop.run_in_executor(pool, self._saver.save_time_series, filename, data)
-        tasks.append(item)
+        task = loop.run_in_executor(pool, self._saver.save_time_series, filename, data)
+        saving_tasks.append((url, task))
 
     async def _get_queue_item(self, queue: _TimeSeriesQueue) -> tuple[str, bytes]:
         url, data = await queue.get()
@@ -188,7 +189,7 @@ class KeplerDownloader:
 
     @functools.singledispatchmethod
     def _handle_saving_result(self, result: None, url: str) -> None:
-        log.info("FITS file save sucessful", url=url)
+        log.debug("FITS file save sucessful", url=url)
         self._saved_file_urls.append(url)
 
     @_handle_saving_result.register
@@ -202,19 +203,24 @@ class KeplerDownloader:
         self._urls_meta_path.touch(exist_ok=True)
         urls = self._filter_urls(list(self._create_mast_urls(ids)))
 
-        try:
-            for url_batch in self._url_batches(urls):
-                tasks = [self._fetch(url) for url in url_batch]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+        with ProgressBar() as bar:
+            task_id = bar.add_task("Downloading FITS files", total=len(urls))
 
-                for url, result in zip(url_batch, results):
-                    await self._handle_fetch_result(result, url, queue)
-        finally:
-            self._save_meta(self._missing_file_urls)
+            try:
+                for url_batch in self._url_batches(urls):
+                    tasks = [self._fetch(url) for url in url_batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    for url, result in zip(url_batch, results):
+                        await self._handle_fetch_result(result, url, queue)
+
+                    bar.advance(task_id, len(results))
+            finally:
+                self._save_meta(self._missing_file_urls)
 
     @functools.singledispatchmethod
     async def _handle_fetch_result(self, result: bytes, url: str, queue: _TimeSeriesQueue) -> None:
-        log.info("FITS file download successful", url=url)
+        log.debug("FITS file download successful", url=url)
         await queue.put((url, result))
 
     @_handle_fetch_result.register
@@ -224,7 +230,7 @@ class KeplerDownloader:
 
     @_handle_fetch_result.register
     async def _(self, result: _MissingFileError, url: str, queue: _TimeSeriesQueue) -> None:
-        log.info("Missing FITS file", url=url)
+        log.debug("Missing FITS file", url=url)
         self._missing_file_urls.append(url)
 
     @retry(on=ApiError)
@@ -265,8 +271,8 @@ class KeplerDownloader:
             filepath = self._urls_meta_path.as_posix()
             with open(filepath, mode="a") as f:
                 f.write(text)
-            log.info("Metadata file saved", number_of_urls=len(urls), path=filepath)
+            log.debug("Metadata file saved", number_of_urls=len(urls), path=filepath)
 
     def _url_batches(self, urls: list[str]) -> Iterator[Iterable[str]]:
-        log.info("Creating URLs batches", batch_size=self._num_tasks)
+        log.debug("Creating URLs batches", batch_size=self._num_tasks)
         yield from (urls[n : n + self._num_tasks] for n in range(0, len(urls), self._num_tasks))
