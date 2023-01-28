@@ -2,7 +2,7 @@ import asyncio
 import functools
 import random
 from collections.abc import Awaitable, Callable
-from typing import ParamSpec, Type, TypeAlias, TypeVar
+from typing import ParamSpec, TypeAlias, TypeVar
 
 import structlog
 
@@ -23,7 +23,10 @@ def check_kepid(kepid: int) -> None:
         raise ValueError(f"'kepid' must be in range 1 to 999 999 999 inclusive, but got {kepid=}")
 
 
-Errors: TypeAlias = Type[Exception] | tuple[Type[Exception], ...]
+# HACK: To properly mark an Exception as an argument type, `Type[Exception]` is necessary,
+# but pyupgrade rewrites it as `type[Exception]`, which causes mypy error:
+# 'Value of type 'Type [type]' is not indexable [index]'
+Errors: TypeAlias = type[Exception] | tuple[type[Exception], ...]  # type: ignore[index]
 P = ParamSpec("P")
 R = TypeVar("R")
 
