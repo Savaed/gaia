@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 from collections.abc import Iterator
 from enum import Enum
@@ -60,3 +61,17 @@ def assert_dict_with_list_equal_no_order(
     tmp_d1 = {k: set(v) for k, v in d1.items()}
     tmp_d2 = {k: set(v) for k, v in d2.items()}
     assert tmp_d1 == tmp_d2
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Force the pytest-asyncio loop to be the main one.
+
+    If there is no running event loop, create one and set as the current one.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    yield loop
