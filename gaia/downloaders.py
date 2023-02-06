@@ -73,7 +73,7 @@ class KeplerDownloader:
         self._saver = saver
         self._nasa_base_url = nasa_base_url.rstrip("/")
         self._mast_base_url = mast_base_url.rstrip("/")
-        self._urls_meta_path = Path().home() / f"{self.__class__.__name__}_series.txt"
+        self._meta_path = Path().home() / f"{self.__class__.__name__}_metadata.txt"
         self._cadence = cadence
         self._num_tasks = num_tasks
         self._missing_file_urls: list[str] = []
@@ -200,7 +200,7 @@ class KeplerDownloader:
 
     async def _fetch_time_series(self, ids: Iterable[int], queue: _TimeSeriesQueue) -> None:
         log.info("Start downloading FITS files")
-        self._urls_meta_path.touch(exist_ok=True)
+        self._meta_path.touch(exist_ok=True)
         urls = self._filter_urls(list(self._create_mast_urls(ids)))
 
         with ProgressBar() as bar:
@@ -259,16 +259,16 @@ class KeplerDownloader:
             )
 
     def _filter_urls(self, urls: Iterable[str]) -> list[str]:
-        processed_urls = set(self._urls_meta_path.read_text().splitlines())
+        processed_urls = set(self._meta_path.read_text().splitlines())
         if processed_urls:
-            meta_path = self._urls_meta_path.as_posix()
+            meta_path = self._meta_path.as_posix()
             log.info("Metadata file detected. Skip URLs from this file", path=meta_path)
         return list(set(urls) - processed_urls)
 
     def _save_meta(self, urls: list[str]) -> None:
         if urls:
             text = "\n".join(urls) + "\n"
-            filepath = self._urls_meta_path.as_posix()
+            filepath = self._meta_path.as_posix()
             with open(filepath, mode="a") as f:
                 f.write(text)
             log.debug("Metadata file saved", number_of_urls=len(urls), path=filepath)

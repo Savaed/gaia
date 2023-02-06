@@ -26,8 +26,8 @@ def downloader(tmp_path):
         mast_base_url=MAST_BASE_URL,
         cadence=Cadence.LONG,
     )
-    test_meta_path = tmp_path / "test_meta.txt"
-    instance._urls_meta_path = test_meta_path
+    # Make sure that metadata is temporal for each test
+    instance._meta_path = tmp_path / "test_meta.txt"
     return instance
 
 
@@ -104,7 +104,7 @@ def downloader_with_test_meta(downloader):
     https://www.mast.com/0000/000000001//kplr000000001-a_pref_llc.fits saved in the metadata file.
     """
     downloaded_url = f"{URL_A_PREF}\n"
-    downloader._urls_meta_path.write_text(downloaded_url)
+    downloader._meta_path.write_text(downloaded_url)
     return downloader
 
 
@@ -186,7 +186,7 @@ async def test_download_time_series__save_meta(http_responses, mocker, downloade
     mocker.patch("gaia.downloaders.get_quarter_prefixes", return_value=("a_pref", "b_pref"))
     mocker.patch("gaia.downloaders.download", side_effect=http_responses)
     await downloader.download_time_series(TEST_ID)
-    downloader._urls_meta_path.read_text().splitlines() == [URL_A_PREF, URL_B_PREF]
+    downloader._meta_path.read_text().splitlines() == [URL_A_PREF, URL_B_PREF]
 
 
 @pytest.fixture
