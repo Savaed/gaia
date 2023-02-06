@@ -3,6 +3,7 @@
 .coverage
 .env
 .git/
+htmlcov/
 .tox/
 .vscode/
 coverage*
