@@ -1,6 +1,7 @@
 **/*.p[ocd]
 **/__pycache__/
 .coverage
+data/
 .env
 .git/
 htmlcov/
