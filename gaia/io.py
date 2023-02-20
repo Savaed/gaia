@@ -1,8 +1,11 @@
 """I/O functions to use in local or cloud environments (GCP, AWS) or HDFS."""
 
 import io
+import pickle
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, AnyStr, Protocol
+from pathlib import Path
+from typing import Any, AnyStr, Generic, Protocol, TypeVar
 
 import tensorflow as tf
 from astropy.io import fits
@@ -113,3 +116,46 @@ def read_fits_table(src: str, header: str, fields: set[str] | None = None) -> di
             fields = columns
 
         return {col: data.data[col] for col in columns if col in fields}
+
+
+T = TypeVar("T", bound=dict[Any, Any])
+
+
+class Reader(Protocol[T]):  # type: ignore[misc]
+    def read(self, id_: str) -> T:
+        ...
+
+
+class PickleReader(Generic[T]):
+    """Reader for pickled data (data serialized with the `pickle` module) compressed or not."""
+
+    def __init__(
+        self,
+        data_dir: str,
+        id_path_pattern: str,
+        decompression_fn: Callable[[bytes], Any] | None = None,
+    ) -> None:
+        self._data_dir = data_dir.rstrip("/")
+        self._id_pattern = id_path_pattern
+        self._decompression_fn = decompression_fn
+
+    def read(self, id_: str) -> T:
+        """Read the pickle file for the specified ID.
+
+        Use decompression if necessary (using the function passed to `PickleReader.__init__` if one
+        was passed).
+
+        Arguments:
+            id_ (str): ID of the file/blob to read. The path to the file is created based on the id
+                pattern, data directory path and this ID.
+
+        Returns:
+            T: Unpickled data. There is no guarantee that the data read is in `T` format.
+        """
+        path = Path(f"{self._data_dir}/{self._id_pattern.replace('{id}', id_)}")
+        raw_data = (
+            self._decompression_fn(path.read_bytes())
+            if self._decompression_fn
+            else path.read_bytes()
+        )
+        return pickle.loads(raw_data)  # type: ignore[no-any-return]

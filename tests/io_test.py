@@ -1,3 +1,7 @@
+import bz2
+import gzip
+import lzma
+import pickle
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -7,7 +11,7 @@ import tensorflow.python.framework.errors_impl as tf_error
 from astropy.io import fits
 from astropy.table import Table
 
-from gaia.io import FileMode, FileSaver, read, read_fits_table, write
+from gaia.io import FileMode, FileSaver, PickleReader, read, read_fits_table, write
 from tests.conftest import assert_dict_with_numpy_equal
 
 
@@ -236,3 +240,58 @@ def test_read_fits_table__read_all_fields_by_default(fields, expected, fits_file
     mocker.patch("gaia.io.fits.open", return_value=fits_file)
     result = read_fits_table(TEST_FILEPATH, TEST_HDU_EXTENSION, fields)
     assert_dict_with_numpy_equal(result, expected)
+
+
+TEST_PICKLE_DICT = {"a": 1, "b": 2}
+
+
+@pytest.fixture
+def pickle_dir(tmp_path):
+    """Prepare and return temporary test directory with pkl files."""
+    (tmp_path / "test-file-1.pkl").write_bytes(pickle.dumps(TEST_PICKLE_DICT))
+    (tmp_path / "test-file-2.pkl").write_bytes(pickle.dumps(TEST_PICKLE_DICT))
+    return tmp_path
+
+
+@pytest.fixture
+def pickle_reader(pickle_dir):
+    """Return a `PickleReader` instance that search files in the `pickle_dir` directory."""
+    return PickleReader[dict[int, str]](
+        data_dir=pickle_dir.as_posix(),
+        id_path_pattern="test-file-{id}.pkl",
+    )
+
+
+def test_pickle_read__id_not_found(pickle_reader):
+    """Test that FileNotFoundError is raised when no file matching the passed ID is found."""
+    with pytest.raises(FileNotFoundError):
+        pickle_reader.read("999")
+
+
+def test_pickle_read__read_depickled_file_no_edcompression(pickle_reader):
+    """Test that the correct dictionary is returned when no compression is used."""
+    result = pickle_reader.read("1")
+    assert result == TEST_PICKLE_DICT
+
+
+@pytest.mark.parametrize(
+    "compression_fns,file_extension",
+    [
+        ((gzip.compress, gzip.decompress), "gz"),
+        ((bz2.compress, bz2.decompress), "bz2"),
+        ((lzma.compress, lzma.decompress), "xz"),
+    ],
+    ids=["gzip", "bz2", "lzma"],
+)
+def test_pickle_read__read_depickled_file_decompression(compression_fns, file_extension, tmp_path):
+    """Test that the correct dictionary is returned when compression is used."""
+    compress_fn, decompress_fn = compression_fns
+    data = compress_fn(pickle.dumps(TEST_PICKLE_DICT))
+    (tmp_path / f"test-file-1.{file_extension}").write_bytes(data)
+    reader = PickleReader[dict[str, int]](
+        tmp_path.as_posix(),
+        f"test-file-{{id}}.{file_extension}",
+        decompress_fn,
+    )
+    result = reader.read("1")
+    assert result == TEST_PICKLE_DICT
