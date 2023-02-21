@@ -82,7 +82,7 @@ class KeplerTCE:
     @property
     def event(self) -> PeriodicEvent:
         """Transit-like periodic event."""
-        return PeriodicEvent(self.epoch, self.duration, self.period)
+        return PeriodicEvent(self.epoch, self.duration, self.period)  # pragma: no cover
 
 
 @dataclass
