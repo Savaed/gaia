@@ -127,7 +127,11 @@ class Reader(Protocol[T]):  # type: ignore[misc]
 
 
 class PickleReader(Generic[T]):
-    """Reader for pickled data (data serialized with the `pickle` module) compressed or not."""
+    """A reader for pickled data (data serialized with the `pickle` module), compressed or not.
+
+    This assumes that files are organized in the structure of one file for one object and file
+    paths contain the ID of that object e.g. 'some/path/file-{id}.pkl'.
+    """
 
     def __init__(
         self,
@@ -146,8 +150,7 @@ class PickleReader(Generic[T]):
         was passed).
 
         Arguments:
-            id_ (str): ID of the file/blob to read. The path to the file is created based on the id
-                pattern, data directory path and this ID.
+            id_ (str): The ID of the file/blob that must be extractable from the file path
 
         Returns:
             T: Unpickled data. There is no guarantee that the data read is in `T` format.
