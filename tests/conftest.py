@@ -1,7 +1,8 @@
 import asyncio
 import shutil
-from collections.abc import Iterable, Iterator
-from enum import Enum
+from collections.abc import Iterable
+from pathlib import Path
+from typing import TypeAlias
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -12,38 +13,32 @@ from pyparsing import Any
 from gaia.log import configure_logging
 
 
-TEST_LOG_DIR = "./test_logs/"
-
-
 @pytest.fixture
-def response(request: Any) -> MagicMock:
-    """Mock an `aiohttp.ClientSession` HTTP method with status and returned response body."""
+def http_response(request):
+    """Return a mock of `aiohttp.ClientSession` HTTP method with status and response body."""
     response_body, status, method = request.param
     response_mock = MagicMock(**{"read": AsyncMock(return_value=response_body), "status": status})
     return MagicMock(**{f"{method}.return_value.__aenter__.return_value": response_mock})
 
 
 @pytest.fixture(scope="session")
-def setup_logging() -> Iterator[None]:
+def setup_logging():
+    """Setup test logging. Logging directory is removed after test session end."""
+    test_log_dir = Path().cwd() / "test_logs/"
     try:
-        configure_logging(TEST_LOG_DIR)
+        configure_logging(test_log_dir.as_posix())
         yield
     finally:
-        shutil.rmtree(TEST_LOG_DIR)
+        shutil.rmtree(test_log_dir)
 
 
-def enum_short_id(value: Enum) -> str:
-    return value.name
+AnyDict: TypeAlias = dict[Any, Any]
 
 
-def prefix_id(value: Any, prefix: str) -> str:
-    return f"{prefix}-{str(value)}"
+def assert_dict_with_numpy_equal(a: AnyDict, b: AnyDict) -> None:
+    """Assert that two dictionaries with NumPy arrays as their values are equal.
 
-
-def assert_dict_with_numpy_equal(a: dict[Any, Any], b: dict[Any, Any]) -> None:
-    """
-    Assert that two dictionaries with NumPy arrays as their values are equal
-    (have the same keys and value but not necessarily in the same order of keys).
+    Equality: keys and values are the same, but not necessarily in the same order of keys.
     """
     sorted_a = dict(sorted(a.items()))
     sorted_b = dict(sorted(b.items()))
@@ -51,13 +46,13 @@ def assert_dict_with_numpy_equal(a: dict[Any, Any], b: dict[Any, Any]) -> None:
     assert all([np.array_equal(r, e) for r, e in zip(sorted_a.values(), sorted_b.values())])
 
 
-def assert_dict_with_list_equal_no_order(
-    d1: dict[Any, list[Any]],
-    d2: dict[Any, list[Any]],
-) -> None:
-    """
-    Assert that two dictionaries with values ​​as lists have the same values ​​regardless of
-    their order.
+DictWithListValues: TypeAlias = dict[Any, list[Any]]
+
+
+def assert_dict_with_list_equal_no_order(d1: DictWithListValues, d2: DictWithListValues) -> None:
+    """Assert that two dictionaries with lists as their values are equal.
+
+    Equality: values in lists are the same, but not necessarily in the same order.
     """
     tmp_d1 = {k: set(v) for k, v in d1.items()}
     tmp_d2 = {k: set(v) for k, v in d2.items()}
@@ -66,7 +61,7 @@ def assert_dict_with_list_equal_no_order(
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Force the pytest-asyncio loop to be the main one.
+    """Setup pytest-asyncio loop to be the main one.
 
     If there is no running event loop, create one and set as the current one.
     """
