@@ -3,6 +3,7 @@ import gzip
 import lzma
 import pickle
 from pathlib import Path
+from textwrap import dedent
 from unittest.mock import Mock
 
 import numpy as np
@@ -11,8 +12,8 @@ import tensorflow.python.framework.errors_impl as tf_error
 from astropy.io import fits
 from astropy.table import Table
 
-from gaia.io import FileMode, FileSaver, PickleReader, read, read_fits_table, write
-from tests.conftest import assert_dict_with_numpy_equal
+from gaia.io import CsvTableReader, FileMode, FileSaver, PickleReader, read, read_fits_table, write
+from tests.conftest import assert_dict_with_numpy_equal, create_df
 
 
 TEST_FILEPATH = "a/b/c.txt"
@@ -178,11 +179,7 @@ TEST_HDU_EXTENSION = "TEST_HEADER"
 
 @pytest.fixture
 def fits_file():
-    """Return a test FITS file with one extension which is a table with columns 'a', 'b'.
-
-    The extension name is specified in the `TEST_HDU_EXTENSION` constant.
-
-    The table is as follows:
+    """Return a test FITS file with one extension which is a table:
     +-------+
     | a | b |
     +=======+
@@ -190,6 +187,7 @@ def fits_file():
     | 2 | 5 |
     | 3 | 6 |
     +-------+
+    The extension name is specified in the `TEST_HDU_EXTENSION` constant.
     """
     data = ([1, 2, 3], [4, 5, 6])
     fields = ("a", "b")
@@ -268,10 +266,10 @@ def test_pickle_read__id_not_found(pickle_reader):
         pickle_reader.read("999")
 
 
-def test_pickle_read__read_depickled_file_no_edcompression(pickle_reader):
-    """Test that the correct dictionary is returned when no compression is used."""
+def test_pickle_read__read_depickled_file_without_decompression(pickle_reader):
+    """Test that the correct dictionary is returned without file decompression."""
     result = pickle_reader.read("1")
-    assert result == TEST_PICKLE_DICT
+    assert result == [TEST_PICKLE_DICT]
 
 
 @pytest.mark.parametrize(
@@ -283,8 +281,12 @@ def test_pickle_read__read_depickled_file_no_edcompression(pickle_reader):
     ],
     ids=["gzip", "bz2", "lzma"],
 )
-def test_pickle_read__read_depickled_file_decompression(compression_fns, file_extension, tmp_path):
-    """Test that the correct dictionary is returned when compression is used."""
+def test_pickle_read__read_depickled_file_with_decompression(
+    compression_fns,
+    file_extension,
+    tmp_path,
+):
+    """Test that the correct dictionary is returned with file decompression."""
     compress_fn, decompress_fn = compression_fns
     data = compress_fn(pickle.dumps(TEST_PICKLE_DICT))
     (tmp_path / f"test-file-1.{file_extension}").write_bytes(data)
@@ -294,4 +296,98 @@ def test_pickle_read__read_depickled_file_decompression(compression_fns, file_ex
         decompress_fn,
     )
     result = reader.read("1")
-    assert result == TEST_PICKLE_DICT
+    assert result == [TEST_PICKLE_DICT]
+
+
+TEST_CSV_TABLE = """
+    id,col1,col2
+    1,10,20
+    2,30,40
+"""
+
+
+@pytest.fixture
+def csv_df():
+    """Return test `pd.DataFrame` table:
+    +----+------+------+
+    | id | col1 | col2 |
+    +====+======+======+
+    | 1  | 10   | 20   |
+    | 2  | 30   | 40   |
+    +----+------+------+
+    """
+    return create_df((("id", "col1", "col2"), (1, 10, 20), (2, 30, 40)))
+
+
+@pytest.fixture
+def csv_table_path(tmp_path):
+    """Return a path to the test CSV file:
+    id,col1,col2
+    1,10,20
+    2,30,40
+    """
+    path = tmp_path / "test-table.csv"
+    path.write_text(dedent(TEST_CSV_TABLE))
+    return path
+
+
+@pytest.fixture
+def csv_table_reader(csv_table_path):
+    """Return an instance of `CsvTableReader` with test data file."""
+    return CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id")  # type: ignore
+
+
+def test_csv_table_read__file_not_found(csv_table_reader):
+    """Test that FileNotFoundError is raised when no source CSV file is found."""
+    csv_table_reader._source = "sdfsdf"
+    with pytest.raises(FileNotFoundError):
+        csv_table_reader.read("1")
+
+
+def test_csv_table_reader_red__id_not_found(csv_table_reader, mocker, csv_df):
+    """Test that KeyError is raised when no object matching the passed ID is found."""
+    mocker.patch("gaia.io.pd.read_csv", return_value=csv_df)
+    with pytest.raises(KeyError):
+        csv_table_reader.read("999")
+
+
+def test_csv_table_reader_red__return_correct_dict_without_mapping(
+    csv_table_reader,
+    csv_df,
+    mocker,
+):
+    """Test that a correct object is returned without field names mapping."""
+    mocker.patch("gaia.io.pd.read_csv", return_value=csv_df)
+    result = csv_table_reader.read("1")
+    assert result == [{"id": 1, "col1": 10, "col2": 20}]
+
+
+@pytest.mark.parametrize(
+    "id_,mapping,expected",
+    [
+        ("1", {"col1": "column1", "col2": "column2"}, [{"id": 1, "column1": 10, "column2": 20}]),
+        ("1", {"col1": "column1"}, [{"id": 1, "column1": 10, "col2": 20}]),
+    ],
+    ids=["map-all", "map-only-few-keys"],
+)
+def test_csv_table_reader_red__return_correct_dict_with_mapping(
+    id_,
+    mapping,
+    expected,
+    csv_table_path,
+    mocker,
+    csv_df,
+):
+    """Test that a correct object is returned with field names mapping."""
+    mocker.patch("gaia.io.pd.read_csv", return_value=csv_df)
+    r = CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id", mapping)  # type: ignore
+    result = r.read(id_)
+    assert result == expected
+
+
+def test_csv_table_reader_read__read_underlying_data_only_once(csv_table_reader, mocker, csv_df):
+    """Check that underlying data is only read once."""
+    pd_read_csv_mock = mocker.patch("gaia.io.pd.read_csv", return_value=csv_df)
+    csv_table_reader.read("1")
+    csv_table_reader.read("2")
+    pd_read_csv_mock.assert_called_once()

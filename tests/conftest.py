@@ -1,10 +1,11 @@
 import asyncio
 import shutil
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from enum import Enum
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 from pyparsing import Any
 
@@ -75,3 +76,15 @@ def event_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     yield loop
+
+
+def create_df(data: tuple[Iterable[Any], ...]) -> pd.DataFrame:
+    """Create table with specified columns and rows.
+
+    Args:
+        data (tuple[Iterable[Any], ...]): Data in form of columns and rows
+
+    Returns:
+        pd.DataFrame: Table with passed columns and rows
+    """
+    return pd.DataFrame(data=data[1:], columns=data[0])

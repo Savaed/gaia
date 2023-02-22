@@ -1,15 +1,17 @@
 """I/O functions to use in local or cloud environments (GCP, AWS) or HDFS."""
 
 import io
+import numbers
 import pickle
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 from typing import Any, AnyStr, Generic, Protocol, TypeVar
 
+import pandas as pd
 import tensorflow as tf
 from astropy.io import fits
-from tensorflow.python.framework.errors_impl import NotFoundError, PermissionDeniedError
+from tensorflow.python.framework import errors_impl as tf_errors
 
 
 class FileMode(Enum):
@@ -37,9 +39,9 @@ def read(src: str, mode: FileMode = FileMode.READ_BINARY) -> AnyStr:
     try:
         with tf.io.gfile.GFile(src, mode.value) as gf:
             return gf.read()  # type: ignore
-    except NotFoundError:
+    except tf_errors.NotFoundError:
         raise FileNotFoundError(src)
-    except PermissionDeniedError as ex:
+    except tf_errors.PermissionDeniedError as ex:
         raise PermissionError(ex)
 
 
@@ -61,9 +63,9 @@ def write(dest: str, data: AnyStr, mode: FileMode = FileMode.WRITE_BINARY) -> No
     try:
         with tf.io.gfile.GFile(dest, mode.value) as gf:
             gf.write(data)
-    except NotFoundError:
+    except tf_errors.NotFoundError:
         raise FileNotFoundError(dest)
-    except PermissionDeniedError as ex:
+    except tf_errors.PermissionDeniedError as ex:
         raise PermissionError(ex)
 
 
@@ -118,15 +120,15 @@ def read_fits_table(src: str, header: str, fields: set[str] | None = None) -> di
         return {col: data.data[col] for col in columns if col in fields}
 
 
-T = TypeVar("T", bound=dict[Any, Any])
+TAnyDict = TypeVar("TAnyDict", bound=dict[Any, Any])
 
 
-class Reader(Protocol[T]):  # type: ignore[misc]
-    def read(self, id_: str) -> T:
+class Reader(Protocol[TAnyDict]):
+    def read(self, id_: str) -> list[TAnyDict]:
         ...
 
 
-class PickleReader(Generic[T]):
+class PickleReader(Generic[TAnyDict]):
     """A reader for pickled data (data serialized with the `pickle` module), compressed or not.
 
     This assumes that files are organized in the structure of one file for one object and file
@@ -137,13 +139,13 @@ class PickleReader(Generic[T]):
         self,
         data_dir: str,
         id_path_pattern: str,
-        decompression_fn: Callable[[bytes], Any] | None = None,
+        decompression_fn: Callable[[Any], bytes] | None = None,
     ) -> None:
         self._data_dir = data_dir.rstrip("/")
         self._id_pattern = id_path_pattern
         self._decompression_fn = decompression_fn
 
-    def read(self, id_: str) -> T:
+    def read(self, id_: str) -> list[TAnyDict]:
         """Read the pickle file for the specified ID.
 
         Use decompression if necessary (using the function passed to `PickleReader.__init__` if one
@@ -153,7 +155,7 @@ class PickleReader(Generic[T]):
             id_ (str): The ID of the file/blob that must be extractable from the file path
 
         Returns:
-            T: Unpickled data. There is no guarantee that the data read is in `T` format.
+            T: Unpickled data. There is no guarantee that the data read is in `T` format
         """
         path = Path(f"{self._data_dir}/{self._id_pattern.replace('{id}', id_)}")
         raw_data = (
@@ -161,4 +163,39 @@ class PickleReader(Generic[T]):
             if self._decompression_fn
             else path.read_bytes()
         )
-        return pickle.loads(raw_data)  # type: ignore[no-any-return]
+        # It should always be only one object. The list is for `Reader` compatibility only
+        return [pickle.loads(raw_data)]
+
+
+TSimpleDict = TypeVar("TSimpleDict", bound=dict[str, numbers.Number | str])
+
+
+class CsvTableReader(Generic[TSimpleDict]):
+    """A reader for tabular data stored in the CSV file format with optional keys names mapping."""
+
+    def __init__(self, source: str, id_column: str, mapping: dict[str, str] | None = None) -> None:
+        self._source = source
+        self._mapping = mapping or {}
+        self._id_column = id_column
+        self._data: pd.DataFrame = None
+
+    def read(self, id_: str) -> list[TSimpleDict]:
+        """Read the object stored in the source CSV data table for the specified ID.
+
+        Args:
+            id_ (str): The ID of the object to read
+
+        Returns:
+            list[TDataclass]: Object(s) mapped from the source CSV table
+        """
+        if self._data is None:
+            self._data = pd.read_csv(self._source)
+
+        # Cast to str in case when `self.id_column` is like int, float, etc.
+        result = self._data.loc[self._data[self._id_column].astype(str) == id_]
+        if result.empty:
+            raise KeyError(f"Not found matching object for {id_=}")
+        x: list[TSimpleDict] = [row.to_dict() for _, row in result.iterrows()]
+        # Optionally map data dict keys. If no mapping is provided, get the dictionary key.
+
+        return [{self._mapping.get(k, k): v for k, v in dct.items()} for dct in x]  # type: ignore

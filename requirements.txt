@@ -76,9 +76,11 @@ multidict==6.0.2
     #   yarl
 numpy==1.23.5
     # via
+    #   GAIA (pyproject.toml)
     #   astropy
     #   h5py
     #   opt-einsum
+    #   pandas
     #   pyerfa
     #   tensorboard
     #   tensorflow
@@ -93,6 +95,8 @@ packaging==21.3
     #   astropy
     #   hydra-core
     #   tensorflow
+pandas==1.5.3
+    # via GAIA (pyproject.toml)
 protobuf==3.19.6
     # via
     #   tensorboard
@@ -109,6 +113,10 @@ pygments==2.13.0
     # via rich
 pyparsing==3.0.9
     # via packaging
+python-dateutil==2.8.2
+    # via pandas
+pytz==2022.7.1
+    # via pandas
 pyyaml==6.0
     # via
     #   astropy
@@ -129,6 +137,7 @@ six==1.16.0
     #   google-auth
     #   google-pasta
     #   grpcio
+    #   python-dateutil
     #   tensorflow
 structlog==22.3.0
     # via GAIA (pyproject.toml)

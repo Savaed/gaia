@@ -13,6 +13,8 @@ dependencies = [
     "aiohttp",
     "astropy",
     "hydra-core",
+    "numpy",
+    "pandas",
     "rich",
     "structlog",
     "tensorflow",
