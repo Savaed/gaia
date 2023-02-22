@@ -7,17 +7,17 @@ import numpy.typing as npt
 
 
 class FromDictMixin(ABC):
-    """Abstract class that provides a method to map flat dictionary to the dataclass."""
+    """Abstract class that provides a method to map flat dictionary to the dataclass object."""
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], mapping: dict[str, str] | None = None):  # type: ignore
+    def from_flat_dict(cls, data: dict[str, Any], mapping: dict[str, str] | None = None) -> Any:
         """Construct a dataclass from a flat (not nested) dictionary.
 
         Args:
             data (dict[str, Any]): Dictionary to map from
             mapping (dict[str, str] | None, optional): Dictionary keys to class fields names map in
-                the format: 'dict_key' -> 'class_field_name'. If `None` then assume that field and
-                keys have the the same names. Defaults to None.
+                the format: 'dict_key' -> 'dataclass_field_name'. If `None` then assume that field
+                and keys have the the same names. Defaults to None.
 
         Raises:
             TypeError: Class is not dataclass
@@ -28,13 +28,13 @@ class FromDictMixin(ABC):
             Self: An instance of the dataclass with data mapped
         """
         if not is_dataclass(cls):
-            raise TypeError(f"{cls=} must be a dataclass")
+            raise TypeError(f"Class '{cls}' must be a dataclass")
 
         mapping = mapping or {}
-        class_fields_names = [f.name for f in fields(cls)]
+        class_fields_names = [field.name for field in fields(cls)]
 
         if mapping:
-            # Map all data-dict fields to new class names
+            # Map all data-dict fields to new class names and filter out non-class keys.
             new_data = {mapping.get(k, k): v for k, v in data.items()}
             new_data = {k: v for k, v in new_data.items() if k in class_fields_names}
         else:
@@ -44,7 +44,7 @@ class FromDictMixin(ABC):
             return cls(**new_data)
         except TypeError as ex:
             missing_keys = str(ex).split(":")[-1].strip()
-            raise KeyError(f"The following keys are not present in passed data: {missing_keys}")
+            raise KeyError(f"Required '{cls}' constructor parameters are missing: {missing_keys}")
 
 
 @dataclass
@@ -55,19 +55,30 @@ class PeriodicEvent:
     period: float
 
 
+ID: TypeAlias = int | str
+
+
 @dataclass
-class KeplerTCE:
-    """Threshold-Crossing Event (TCE) for Kepler observations.
+class TargetRelatedObject:
+    """Object related to the target star, binary or multiple system."""
+
+    target_id: ID
+
+
+@dataclass
+class TCE(FromDictMixin, TargetRelatedObject):
+    """Threshold-Crossing Event.
 
     A sequence of transit-like features in the flux time series of a given target that resembles
     the signature of a transiting planet to a sufficient degree that the target is passed on for
     further analysis.
     """
 
-    kepid: int
-    label: str
-    tce_num: int
-    """The number of observed TCE in the flux time series of a given target."""
+    tce_id: ID
+
+
+@dataclass
+class KeplerTCE(TCE):
     opt_ghost_core_aperture_corr: float
     opt_ghost_halo_aperture_corr: float
     bootstrap_false_alarm_proba: float
@@ -78,16 +89,21 @@ class KeplerTCE:
     epoch: float
     duration: float
     period: float
+    _normalize_duration: bool = True
+
+    def __post_init__(self) -> None:  # pragma: no cover
+        self.target_id = int(self.target_id)
+        self.tce_id = int(self.tce_id)
 
     @property
-    def event(self) -> PeriodicEvent:
+    def event(self) -> PeriodicEvent:  # pragma: no cover
         """Transit-like periodic event."""
-        return PeriodicEvent(self.epoch, self.duration, self.period)  # pragma: no cover
+        duration = self.duration / 24 if self._normalize_duration else self.duration
+        return PeriodicEvent(self.epoch, duration, self.period)
 
 
 @dataclass
-class KeplerStellarParameters:
-    kepid: int
+class KeplerStellarParameters(FromDictMixin, TargetRelatedObject):
     effective_temperature: float
     radius: float
     mass: float
@@ -97,14 +113,14 @@ class KeplerStellarParameters:
     metallicity: float
 
 
-Segments = list[npt.NDArray[np.float_]] | npt.NDArray[np.float_]
+Series: TypeAlias = npt.NDArray[np.float_]
 
 
 class KeplerTimeSeries(TypedDict):
-    TIME: Segments
-    MOM_CENTR1: Segments
-    MOM_CENTR2: Segments
-    PDCSAP_FLUX: Segments
+    TIME: Series
+    MOM_CENTR1: Series
+    MOM_CENTR2: Series
+    PDCSAP_FLUX: Series
 
 
 KeplerQuarterlyTimeSeries: TypeAlias = dict[str, KeplerTimeSeries]
