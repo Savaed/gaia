@@ -26,7 +26,7 @@ def check_kepid(kepid: int) -> None:
 # HACK: To properly mark an Exception as an argument type, `Type[Exception]` is necessary,
 # but pyupgrade rewrites it as `type[Exception]`, which causes mypy error:
 # 'Value of type 'Type [type]' is not indexable [index]'
-Errors: TypeAlias = type[Exception] | tuple[type[Exception], ...]  # type: ignore[index]
+Errors: TypeAlias = type[Exception] | tuple[type[Exception], ...]
 P = ParamSpec("P")
 R = TypeVar("R")
 
