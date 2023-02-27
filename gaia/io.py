@@ -5,7 +5,7 @@ import numbers
 import pickle
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, AnyStr, Generic, Protocol, TypeVar
+from typing import Any, AnyStr, Generic, Protocol, TypeAlias, TypeVar
 
 import pandas as pd
 import tensorflow as tf
@@ -119,19 +119,21 @@ def read_fits_table(src: str, header: str, fields: set[str] | None = None) -> di
     return {col: data.data[col] for col in columns if col in fields}
 
 
-TAnyDict = TypeVar("TAnyDict", bound=dict[Any, Any])
+SimpleDict: TypeAlias = dict[str, str | numbers.Number]
+
+T = TypeVar("T")
 
 
 class ReaderError(Exception):
     """Raised when cannot read data resource (file, database etc.)."""
 
 
-class Reader(Protocol[TAnyDict]):
-    def read(self, id_: str) -> list[TAnyDict]:
+class Reader(Protocol[T]):
+    def read(self, id_: str) -> list[T]:
         ...
 
 
-class PickleReader(Generic[TAnyDict]):
+class PickleReader(Generic[T]):
     """A reader for pickled data (data serialized with the `pickle` module), compressed or not.
 
     This assumes that files are organized in the structure of one file for one object and file
@@ -148,7 +150,7 @@ class PickleReader(Generic[TAnyDict]):
         self._id_pattern = id_path_pattern
         self._decompression_fn = decompression_fn
 
-    def read(self, id_: str) -> list[TAnyDict]:
+    def read(self, id_: str) -> list[T]:
         """Read the `.pkl` file for the specified ID.
 
         Use decompression if necessary (using the function passed to `PickleReader.__init__` if one
@@ -163,7 +165,7 @@ class PickleReader(Generic[TAnyDict]):
                 error (for external resources only), decompression error, etc.
 
         Returns:
-            list[TAnyDict]: 1-element list of unpickled data. There is no guarantee that the data
+            list[TDict]: 1-element list of unpickled data. There is no guarantee that the data
                 read is in `TAnyDict` format
         """
         if not self._is_data_dir_available():
@@ -193,10 +195,7 @@ class PickleReader(Generic[TAnyDict]):
             return False
 
 
-TSimpleDict = TypeVar("TSimpleDict", bound=dict[str, numbers.Number | str])
-
-
-class CsvTableReader(Generic[TSimpleDict]):
+class CsvTableReader(Generic[T]):
     """A reader for tabular data stored in the CSV file format with optional key names mapping."""
 
     def __init__(self, source: str, id_column: str, mapping: dict[str, str] | None = None) -> None:
@@ -205,7 +204,7 @@ class CsvTableReader(Generic[TSimpleDict]):
         self._id_column = id_column
         self._data: pd.DataFrame = None
 
-    def read(self, id_: str) -> list[TSimpleDict]:
+    def read(self, id_: str) -> list[T]:
         """Read the object stored in the source CSV file for the specified ID.
 
         Args:
@@ -220,7 +219,7 @@ class CsvTableReader(Generic[TSimpleDict]):
         """
         if self._data is None:
             try:
-                self._data = pd.read_csv(io.BytesIO(read(self._source)))  # type: ignore[arg-type]
+                self._data = pd.read_csv(io.BytesIO(read(self._source)))  # type: ignore
             except Exception as ex:
                 raise ReaderError(f"Cannot read CSV file {self._source!r}. {ex}")
 
@@ -229,6 +228,6 @@ class CsvTableReader(Generic[TSimpleDict]):
         if result.empty:
             raise KeyError(id_)
 
-        x: list[TSimpleDict] = [row.to_dict() for _, row in result.iterrows()]
+        x: list[T] = [row.to_dict() for _, row in result.iterrows()]
         # Optionally map data dict keys. If no mapping is provided, get the dictionary key.
         return [{self._mapping.get(k, k): v for k, v in dct.items()} for dct in x]  # type: ignore

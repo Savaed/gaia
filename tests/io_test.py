@@ -399,7 +399,7 @@ def csv_table_path(tmp_path):
 @pytest.fixture
 def csv_table_reader(csv_table_path):
     """Return an instance of `CsvTableReader` with test data file."""
-    return CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id")  # type: ignore
+    return CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id")
 
 
 @pytest.mark.parametrize(
@@ -451,7 +451,7 @@ def test_csv_table_reader_read__return_correct_dict_with_mapping(
     csv_table_path,
 ):
     """Test that a correct object is returned with field names mapping."""
-    r = CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id", mapping)  # type: ignore
+    r = CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id", mapping)
     result = r.read(id_)
     assert result == expected
 
