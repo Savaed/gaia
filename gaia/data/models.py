@@ -9,6 +9,7 @@ import numpy.typing as npt
 class FromDictMixin(ABC):
     """Abstract class that provides a method to map flat dictionary to the dataclass object."""
 
+    # TODO: Use '() -> Self' after upgrading to python 3.11
     @classmethod
     def from_flat_dict(cls, data: dict[str, Any], mapping: dict[str, str] | None = None) -> Any:
         """Construct a dataclass from a flat (not nested) dictionary.
@@ -44,7 +45,9 @@ class FromDictMixin(ABC):
             return cls(**new_data)
         except TypeError as ex:
             missing_keys = str(ex).split(":")[-1].strip()
-            raise KeyError(f"Required '{cls}' constructor parameters are missing: {missing_keys}")
+            raise KeyError(
+                f"Required __init__ parameters: {missing_keys} not found in data dictionary",
+            )
 
 
 @dataclass
@@ -113,14 +116,11 @@ class KeplerStellarParameters(FromDictMixin, TargetRelatedObject):
     metallicity: float
 
 
-Series: TypeAlias = npt.NDArray[np.float_]
-
-
 class KeplerTimeSeries(TypedDict):
-    TIME: Series
-    MOM_CENTR1: Series
-    MOM_CENTR2: Series
-    PDCSAP_FLUX: Series
+    TIME: npt.NDArray[np.float_]
+    MOM_CENTR1: npt.NDArray[np.float_]
+    MOM_CENTR2: npt.NDArray[np.float_]
+    PDCSAP_FLUX: npt.NDArray[np.float_]
 
 
 KeplerQuarterlyTimeSeries: TypeAlias = dict[str, KeplerTimeSeries]
