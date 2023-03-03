@@ -4,17 +4,16 @@ They provide a convenient way to retrieve data such as time series or various sc
 without worrying about what the data format is or where it is located.
 """
 
-import numbers
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Generic, TypeAlias, TypeVar
+from typing import Generic, TypeVar
 
 import numpy as np
 import numpy.typing as npt
 
-from gaia.data.models import ID, TCE, FromDictMixin
-from gaia.io import Reader, ReaderError
+from gaia.data.models import ID, TCE, StellarParameters
+from gaia.io import ReaderError, TableReader, TimeSeriesReader
 
 
 class DataSourceError(Exception):
@@ -32,18 +31,18 @@ class DataNotFoundError(Exception):
         self._ids = ids
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"No data found for IDs={self._ids}"
+        return f"No data found for search parameters: {self._ids}"
 
 
 @dataclass
-class MissingDataPartsError(Exception):
-    """Raised when some required parts of data are missing."""
+class MissingPeriodsError(Exception):
+    """Raised when some required time series periods are missing."""
 
-    parts: Iterable[str]
+    periods: Iterable[str]
 
     def __str__(self) -> str:  # pragma: no cover
-        missing_parts = ", ".join(self.parts)
-        return f"Following requested data parts are missing: {missing_parts}"
+        missing_periods = ", ".join(self.periods)
+        return f"Following periods are missing: {missing_periods}"
 
 
 # TODO: Add proper type hints in the future
@@ -56,14 +55,14 @@ class TimeSeriesSource(Generic[TTimeSeries]):
     The data dictionary from the specified reader must have keys matching the `TTimeSeries` keys.
     """
 
-    def __init__(self, reader: Reader[dict[str, TTimeSeries]]) -> None:
+    def __init__(self, reader: TimeSeriesReader[dict[str, TTimeSeries]]) -> None:
         self._reader = reader
 
     def get(
         self,
         id_: ID,
         squeeze: bool = False,
-        parts: Iterable[str] | None = None,
+        periods: Iterable[str] | None = None,
     ) -> dict[str, TTimeSeries]:
         """Retrieve time series for the particular observation target.
 
@@ -71,38 +70,45 @@ class TimeSeriesSource(Generic[TTimeSeries]):
             id_ (ID): The id of the target e.g. the id of KOI for Kepler dataset. `str` or `int`.
             squeeze (bool, optional): Whether to flatten series for all series parts into a single
                 one. Defaults to False.
-            parts (Iterable[str] | None, optional): Which parts (e.g. observation quarters for
-                Kepler dataset) of the time series to return. If None then all available parts are
+            periods (Iterable[str] | None, optional): Which periods (e.g. observation quarters for
+                Kepler dataset) of the time series to return. If None then all available are
                 returned. Defaults to None.
 
         Raises:
             DataNotFoundError: No requested time series found
-            DataSourceError: The data could not be read due to a data resource problem
-            MissingDataPartsError: Requested data parts are unavailable
+            DataSourceError: The data could not be read due to an internal data resource problem
+            MissingDataPartsError: Requested time series periods are unavailable
 
         Returns:
-            dict[str, TTimeSeries]: Data in the format 'series_part' -> 'TTimeSeries'.
+            dict[str, TTimeSeries]: Data in the format 'series_period' -> 'TTimeSeries'.
                 If `squeeze` is set to True then all partial time series (separate series for each
-                part of observations) are combined together and returned as a dictionary with only
-                one key: 'all' and values as combined time series in `TTimeSeries` format.
+                period of observations) are combined together and returned as a dictionary with
+                only one key: 'all' and values as combined periods in `TTimeSeries` format.
         """
         try:
-            series_dict = self._reader.read(str(id_))[0]
+            series_dict = self._reader.read(str(id_))
         except KeyError:
             raise DataNotFoundError(id_)
         except ReaderError as ex:
             raise DataSourceError(ex)
 
-        missing_parts = set(parts) - set(series_dict) if parts else None
-        if missing_parts:
-            raise MissingDataPartsError(missing_parts)
+        missing_periods = set(periods or []) - set(series_dict)
+        if missing_periods:
+            raise MissingPeriodsError(missing_periods)
 
-        series = (
-            {part: value for part, value in series_dict.items() if part in parts}
-            if parts
+        series = self._filter_periods(periods, series_dict)
+        return self._squeeze(series) if squeeze else series
+
+    def _filter_periods(
+        self,
+        periods: Iterable[str] | None,
+        series_dict: dict[str, TTimeSeries],
+    ) -> dict[str, TTimeSeries]:
+        return (
+            {part: value for part, value in series_dict.items() if part in periods}
+            if periods
             else series_dict
         )
-        return self._squeeze(series) if squeeze else series
 
     def _squeeze(self, data: dict[str, TTimeSeries]) -> dict[str, TTimeSeries]:
         output: dict[str, list[npt.ArrayLike]] = defaultdict(list)
@@ -117,17 +123,17 @@ class TimeSeriesSource(Generic[TTimeSeries]):
 
 
 TTCE = TypeVar("TTCE", bound=TCE)
-SimpleDict: TypeAlias = dict[str, str | numbers.Number]
 
 
 class TceSource(Generic[TTCE]):
     """Data source for TCEs.
 
-    The data dictionary from the specified reader must have keys matching the `TTCE` keys.
+    The data dictionary from the specified reader must have keys matching the `TTCE` field names.
     """
 
-    def __init__(self, reader: Reader[SimpleDict]) -> None:
+    def __init__(self, reader: TableReader) -> None:
         self._reader = reader
+        self._data: list[TTCE] = []
 
     def get_all_for_target(self, target_id: ID) -> list[TTCE]:
         """Retrieve all TCEs for a particular observation target if any.
@@ -144,9 +150,12 @@ class TceSource(Generic[TTCE]):
         Returns:
             list[TTCE]: All TCEs for the target. Can be an empty list
         """
-        return self._get(target_id)
+        tces = self._get(lambda tce: tce.target_id == target_id)
+        if not tces:
+            raise DataNotFoundError(target_id)
+        return tces
 
-    def get(self, target_id: ID, tce_id: ID) -> TTCE:
+    def get_by_id(self, target_id: ID, tce_id: ID) -> TTCE:
         """Retrieve Threshold-Crossing Event (TCE) for a particular observation target.
 
         Args:
@@ -162,31 +171,37 @@ class TceSource(Generic[TTCE]):
         Returns:
             TTCE: Requested TCE
         """
-        tces = self._get(target_id)
-        try:
-            return [tce for tce in tces if str(tce.tce_id) == tce_id][0]
-        except IndexError:
+        tces = self._get(lambda tce: tce.target_id == target_id and tce.tce_id == tce_id)
+        if not tces:
             raise DataNotFoundError(target_id, tce_id)
 
-    def _get(self, target_id: ID) -> list[TTCE]:
-        # HACK: This is a `TTCE` real type at runtime. See: https://stackoverflow.com/a/63318205
-        generic_type: type[TTCE] = self.__orig_class__.__args__[0]  # type: ignore
-        try:
-            result = self._reader.read(str(target_id))
-        except KeyError:
-            raise DataNotFoundError(target_id)
-        except ReaderError as ex:
-            raise DataSourceError(ex)
+        return tces[0]
 
-        try:
-            return [generic_type.from_flat_dict(row) for row in result]
-        except KeyError as ex:
-            raise DataSourceError(
-                f"Unable to create an instance of '{generic_type.__name__}'. {ex}",
-            )
+    def get_by_name(self, name: str) -> TTCE:
+        tces = self._get(lambda tce: tce.name == name)
+        if not tces:
+            raise DataNotFoundError(name)
+        return tces[0]
+
+    def _get(self, predicate: Callable[[TTCE], bool]) -> list[TTCE]:
+        if not self._data:  # pragma: no cover
+            try:
+                data = self._reader.read()
+            except ReaderError as ex:
+                raise DataSourceError(ex)
+
+            # HACK: This is a `TTCE` real type at runtime. See: https://stackoverflow.com/a/63318205
+            generic_type: type[TTCE] = self.__orig_class__.__args__[0]  # type: ignore
+
+            try:
+                self._data = [generic_type.from_flat_dict(x) for x in data]
+            except (TypeError, KeyError) as ex:
+                raise DataSourceError(ex)
+
+        return list(filter(predicate, self._data))
 
 
-TParams = TypeVar("TParams", bound=FromDictMixin)
+TParams = TypeVar("TParams", bound=StellarParameters)
 
 
 class StellarParametersSource(Generic[TParams]):
@@ -195,8 +210,9 @@ class StellarParametersSource(Generic[TParams]):
     The data dictionary from the specified reader must have keys matching the `TParams` keys.
     """
 
-    def __init__(self, reader: Reader[SimpleDict]) -> None:
+    def __init__(self, reader: TableReader) -> None:
         self._reader = reader
+        self._data: list[TParams] = []  # can be a list of dicts to even faster processing
 
     def get(self, id_: ID) -> TParams:
         """Retrieve physical properties for a particular observation target.
@@ -212,18 +228,25 @@ class StellarParametersSource(Generic[TParams]):
         Returns:
             TTCE: Requested physical properties of star or binary/multiple system
         """
-        try:
-            params_dict = self._reader.read(str(id_))[0]
-        except KeyError:
+        params = self._get(lambda params: params.target_id == id_)
+        if not params:
             raise DataNotFoundError(id_)
-        except ReaderError as ex:
-            raise DataSourceError(ex)
+        return params[0]
 
-        # HACK: This is a `TParams` real type at runtime. See: https://stackoverflow.com/a/63318205
-        generic_type: type[TParams] = self.__orig_class__.__args__[0]  # type: ignore
-        try:
-            return generic_type.from_flat_dict(params_dict)  # type: ignore
-        except KeyError as ex:
-            raise DataSourceError(
-                f"Unable to create an instance of '{generic_type.__name__}'. {ex}",
-            )
+    def _get(self, predicate: Callable[[TParams], bool]) -> list[TParams]:
+        if not self._data:  # pragma: no cover
+            try:
+                data = self._reader.read()
+            except ReaderError as ex:
+                raise DataSourceError(ex)
+
+            # HACK: This is `TParams` real type at runtime.
+            # See: https://stackoverflow.com/a/63318205
+            generic_type: type[TParams] = self.__orig_class__.__args__[0]  # type: ignore
+
+            try:
+                self._data = [generic_type.from_flat_dict(x) for x in data]
+            except (TypeError, KeyError) as ex:
+                raise DataSourceError(ex)
+
+        return list(filter(predicate, self._data))

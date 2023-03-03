@@ -1,3 +1,4 @@
+import abc
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, TypeAlias, TypedDict
@@ -78,6 +79,12 @@ class TCE(FromDictMixin, TargetRelatedObject):
     """
 
     tce_id: ID
+    name: str | None
+
+    @property
+    @abc.abstractmethod
+    def event(self) -> PeriodicEvent:
+        ...
 
 
 @dataclass
@@ -100,13 +107,17 @@ class KeplerTCE(TCE):
 
     @property
     def event(self) -> PeriodicEvent:  # pragma: no cover
-        """Transit-like periodic event."""
         duration = self.duration / 24 if self._normalize_duration else self.duration
         return PeriodicEvent(self.epoch, duration, self.period)
 
 
 @dataclass
-class KeplerStellarParameters(FromDictMixin, TargetRelatedObject):
+class StellarParameters(FromDictMixin, TargetRelatedObject):
+    """Physical properties of the target star, binary or multiple system."""
+
+
+@dataclass
+class KeplerStellarParameters(StellarParameters):
     effective_temperature: float
     radius: float
     mass: float
