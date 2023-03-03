@@ -107,16 +107,16 @@ def read_fits_table(src: str, header: str, fields: set[str] | None = None) -> di
     with fits.open(io.BytesIO(read(src))) as hdul:  # type: ignore[arg-type]
         data = hdul[header]
 
-    columns = {col.name for col in data.columns}
+        columns = {col.name for col in data.columns}
 
-    if fields:
-        not_existent_fields = fields - columns
-        if not_existent_fields:
-            raise ValueError(f"Fields {not_existent_fields} not present in the FITS file")
-    else:
-        fields = columns
+        if fields:
+            not_existent_fields = fields - columns
+            if not_existent_fields:
+                raise ValueError(f"Fields {not_existent_fields} not present in the FITS file")
+        else:
+            fields = columns
 
-    return {col: data.data[col] for col in columns if col in fields}
+        return {col: data.data[col] for col in columns if col in fields}
 
 
 SimpleDict: TypeAlias = dict[str, str | numbers.Number]
@@ -128,12 +128,18 @@ class ReaderError(Exception):
     """Raised when cannot read data resource (file, database etc.)."""
 
 
-class Reader(Protocol[T]):
-    def read(self, id_: str) -> list[T]:
+# T is a dict in form  dict[str, dict[str, Sequence[Number]]]
+class TimeSeriesReader(Protocol[T]):  # type: ignore
+    def read(self, id_: str) -> T:
         ...
 
 
-class PickleReader(Generic[T]):
+class TableReader(Protocol):
+    def read(self) -> list[SimpleDict]:
+        ...
+
+
+class TimeSeriesPickleReader(Generic[T]):
     """A reader for pickled data (data serialized with the `pickle` module), compressed or not.
 
     This assumes that files are organized in the structure of one file for one object and file
@@ -150,11 +156,8 @@ class PickleReader(Generic[T]):
         self._id_pattern = id_path_pattern
         self._decompression_fn = decompression_fn
 
-    def read(self, id_: str) -> list[T]:
-        """Read the `.pkl` file for the specified ID.
-
-        Use decompression if necessary (using the function passed to `PickleReader.__init__` if one
-        was passed).
+    def read(self, id_: str) -> T:
+        """Read the `.pkl` file for the specified ID. Use decompression if necessary.
 
         Args:
             id_ (str): The ID of the file/blob that must be extractable from the file path
@@ -165,8 +168,7 @@ class PickleReader(Generic[T]):
                 error (for external resources only), decompression error, etc.
 
         Returns:
-            list[TDict]: 1-element list of unpickled data. There is no guarantee that the data
-                read is in `TAnyDict` format
+            T: Unpickled data. There is no guarantee that the data read is in `T` format
         """
         if not self._is_data_dir_available():
             raise ReaderError(f"Data directory {self._data_dir!r} is unavalilable")
@@ -182,10 +184,9 @@ class PickleReader(Generic[T]):
         try:
             data = self._decompression_fn(raw_bytes) if self._decompression_fn else raw_bytes
         except Exception as ex:
-            raise ReaderError(f"Decompression failed. {ex}")
+            raise ReaderError(f"Decompression of {filepath!r} failed. {ex}")
 
-        # It should always be only one object. The list is for `Reader` compatibility only
-        return [pickle.loads(data)]
+        return pickle.loads(data)  # type: ignore[no-any-return]
 
     def _is_data_dir_available(self) -> bool:
         try:
@@ -195,39 +196,33 @@ class PickleReader(Generic[T]):
             return False
 
 
-class CsvTableReader(Generic[T]):
-    """A reader for tabular data stored in the CSV file format with optional key names mapping."""
+class CsvTableReader:
+    """A reader for tabular data stored in the CSV file format with optional keys mapping."""
 
-    def __init__(self, source: str, id_column: str, mapping: dict[str, str] | None = None) -> None:
+    def __init__(self, source: str, mapping: dict[str, str] | None = None) -> None:
         self._source = source
-        self._mapping = mapping or {}
-        self._id_column = id_column
-        self._data: pd.DataFrame = None
+        self._mapping = mapping
 
-    def read(self, id_: str) -> list[T]:
-        """Read the object stored in the source CSV file for the specified ID.
-
-        Args:
-            id_ (str): The identifier of the object to read
+    def read(self) -> list[SimpleDict]:
+        """Read the entire table stored in the CSV file.
 
         Raises:
-            ReaderError: Cannot read CSV file
-            KeyError: Requested data not found in CSV file
+            ReaderError: The CSV file could not be read OR the keys could not be mapped
 
         Returns:
-            list[TSimpleDict]: Dict(s) with optionally mapped keys where the id_column matches `id_`
+            list[TSimpleDict]: List of rows as dictionaries (with optionally mapped keys)
         """
-        if self._data is None:
+        try:
+            data = pd.read_csv(io.BytesIO(read(self._source)))  # type: ignore
+        except FileNotFoundError:
+            raise ReaderError(f"Cannot read CSV file {self._source!r}. File not found")
+        except Exception as ex:
+            raise ReaderError(f"Cannot read CSV file {self._source!r}. {ex}")
+
+        if self._mapping:
             try:
-                self._data = pd.read_csv(io.BytesIO(read(self._source)))  # type: ignore
-            except Exception as ex:
-                raise ReaderError(f"Cannot read CSV file {self._source!r}. {ex}")
+                data = data.rename(columns=self._mapping, errors="raise")
+            except KeyError as ex:
+                raise ReaderError(f"Cannot map {ex!r} key using {self._mapping}")
 
-        # Cast to str in case when `self.id_column` is like int, float, etc.
-        result = self._data.loc[self._data[self._id_column].astype(str) == id_]
-        if result.empty:
-            raise KeyError(id_)
-
-        x: list[T] = [row.to_dict() for _, row in result.iterrows()]
-        # Optionally map data dict keys. If no mapping is provided, get the dictionary key.
-        return [{self._mapping.get(k, k): v for k, v in dct.items()} for dct in x]  # type: ignore
+        return data.to_dict("records")  # type: ignore

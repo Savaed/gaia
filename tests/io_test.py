@@ -16,8 +16,8 @@ from gaia.io import (
     CsvTableReader,
     FileMode,
     FileSaver,
-    PickleReader,
     ReaderError,
+    TimeSeriesPickleReader,
     read,
     read_fits_table,
     write,
@@ -292,7 +292,7 @@ def read_pickle(mocker):
 @pytest.fixture
 def pickle_reader(pickle_dir):
     """Return `PickleReader` instance with data_dir set to directory from `pickle_dir` fixture."""
-    return PickleReader[dict[int, str]](
+    return TimeSeriesPickleReader[dict[int, str]](
         data_dir=pickle_dir.as_posix(),
         id_path_pattern="test-file-{id}.pkl",
     )
@@ -305,7 +305,7 @@ def is_dir_true(mocker):
 
 
 @pytest.mark.usefixtures("is_dir_true")
-def test_pickle_read__id_not_found(pickle_reader):
+def test_pickle_reader_read__id_not_found(pickle_reader):
     """Test that `KeyError` is raised when no file matching the passed ID is found."""
     with pytest.raises(KeyError):
         pickle_reader.read("999")
@@ -326,7 +326,12 @@ def test_pickle_read__id_not_found(pickle_reader):
         "generic_is_dir_error",
     ],
 )
-def test_pickle_read__data_resource_error(is_data_dir_output, read_output, mocker, pickle_reader):
+def test_pickle_reader_read__data_resource_error(
+    is_data_dir_output,
+    read_output,
+    mocker,
+    pickle_reader,
+):
     """Test that `ReaderError` is raised when data read error occur."""
     mocker.patch("gaia.io.tf.io.gfile.isdir", side_effect=[is_data_dir_output])
     mocker.patch("gaia.io.read", side_effect=[read_output])
@@ -335,10 +340,10 @@ def test_pickle_read__data_resource_error(is_data_dir_output, read_output, mocke
 
 
 @pytest.mark.usefixtures("is_dir_true", "read_pickle")
-def test_pickle_read__decompression_error():
+def test_pickle_reader_read__decompression_error():
     """Test that `ReaderError` is raised when data decompression error occur."""
     decompress_fn_mock = Mock(side_effect=Exception("Decompression error"))
-    reader = PickleReader[dict[int, str]](
+    reader = TimeSeriesPickleReader[dict[int, str]](
         data_dir="Sdf",
         id_path_pattern="sdf",
         decompression_fn=decompress_fn_mock,
@@ -348,10 +353,10 @@ def test_pickle_read__decompression_error():
 
 
 @pytest.mark.usefixtures("is_dir_true", "read_pickle")
-def test_pickle_read__read_without_decompression(pickle_reader):
+def test_pickle_reader_read__read_without_decompression(pickle_reader):
     """Test that the correct dictionary is returned without file decompression."""
     result = pickle_reader.read("1")
-    assert result == [TEST_PICKLE_DICT]
+    assert result == TEST_PICKLE_DICT
 
 
 @pytest.mark.usefixtures("is_dir_true")
@@ -364,17 +369,17 @@ def test_pickle_read__read_without_decompression(pickle_reader):
     ],
     ids=["gzip", "bz2", "lzma"],
 )
-def test_pickle_read__read_with_decompression(compression_fn, decompression_fn, mocker):
+def test_pickle_reader_read__read_with_decompression(compression_fn, decompression_fn, mocker):
     """Test that the correct dictionary is returned with file decompression."""
     compressed_data = compression_fn(pickle.dumps(TEST_PICKLE_DICT))
     mocker.patch("gaia.io.read", return_value=compressed_data)
-    reader = PickleReader[dict[str, int]](
+    reader = TimeSeriesPickleReader[dict[str, int]](
         data_dir="dfsd",
         id_path_pattern="sdfsdf",
         decompression_fn=decompression_fn,
     )
     result = reader.read("1")
-    assert result == [TEST_PICKLE_DICT]
+    assert result == TEST_PICKLE_DICT
 
 
 TEST_CSV_TABLE = """
@@ -393,13 +398,13 @@ def csv_table_path(tmp_path):
     """
     path = tmp_path / "test-table.csv"
     path.write_text(dedent(TEST_CSV_TABLE))
-    return path
+    return path.as_posix()
 
 
 @pytest.fixture
 def csv_table_reader(csv_table_path):
     """Return an instance of `CsvTableReader` with test data file."""
-    return CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id")
+    return CsvTableReader(csv_table_path)
 
 
 @pytest.mark.parametrize(
@@ -407,11 +412,11 @@ def csv_table_reader(csv_table_path):
     [PermissionError(), FileNotFoundError(), Exception()],
     ids=["permission_denied", "file_not_found", "generic_read_error"],
 )
-def test_csv_table_read__file_read_error(read_error, csv_table_reader, mocker):
+def test_csv_table_reader_read__file_read_error(read_error, csv_table_reader, mocker):
     """Test that `ReaderError` is raised when cannot read the underlying CSV file."""
     mocker.patch("gaia.io.read", side_effect=read_error)
     with pytest.raises(ReaderError):
-        csv_table_reader.read("1")
+        csv_table_reader.read()
 
 
 @pytest.fixture
@@ -422,42 +427,36 @@ def read_csv(mocker):
 
 
 @pytest.mark.usefixtures("read_csv")
-def test_csv_table_reader_read__id_not_found(csv_table_reader):
-    """Test that `KeyError` is raised when no object matching the passed ID is found."""
-    with pytest.raises(KeyError):
-        csv_table_reader.read("999")
-
-
-@pytest.mark.usefixtures("read_csv")
-def test_csv_table_reader_read__return_correct_dict_without_mapping(csv_table_reader):
+def test_csv_table_reader_read__read_without_mapping(csv_table_reader):
     """Test that a correct object is returned without field names mapping."""
-    result = csv_table_reader.read("1")
-    assert result == [{"id": 1, "col1": 10, "col2": 20}]
+    result = csv_table_reader.read()
+    assert result == [{"id": 1, "col1": 10, "col2": 20}, {"id": 2, "col1": 30, "col2": 40}]
 
 
 @pytest.mark.usefixtures("read_csv")
 @pytest.mark.parametrize(
-    "id_,mapping,expected",
+    "mapping,expected",
     [
-        ("1", {"col1": "column1", "col2": "column2"}, [{"id": 1, "column1": 10, "column2": 20}]),
-        ("1", {"col1": "column1"}, [{"id": 1, "column1": 10, "col2": 20}]),
+        (
+            {"col1": "column1", "col2": "column2"},
+            [{"id": 1, "column1": 10, "column2": 20}, {"id": 2, "column1": 30, "column2": 40}],
+        ),
+        (
+            {"col1": "column1"},
+            [{"id": 1, "column1": 10, "col2": 20}, {"id": 2, "column1": 30, "col2": 40}],
+        ),
     ],
     ids=["map_all", "map_only_few_keys"],
 )
-def test_csv_table_reader_read__return_correct_dict_with_mapping(
-    id_,
-    mapping,
-    expected,
-    csv_table_path,
-):
+def test_csv_table_reader_read__read_with_mapping(mapping, expected, csv_table_path):
     """Test that a correct object is returned with field names mapping."""
-    r = CsvTableReader[dict[str, int]](csv_table_path.as_posix(), "id", mapping)
-    result = r.read(id_)
+    reader = CsvTableReader(csv_table_path, mapping)
+    result = reader.read()
     assert result == expected
 
 
-def test_csv_table_reader_read__read_underlying_data_only_once(csv_table_reader, read_csv):
-    """Test that underlying data is only read once."""
-    csv_table_reader.read("1")
-    csv_table_reader.read("2")
-    read_csv.assert_called_once()
+def test_csv_table_reader_read__mapping_error(csv_table_path):
+    """Test that ReaderError is raised when cannot correctly map dicts keys."""
+    reader = CsvTableReader(csv_table_path, {"asdad": "asdasd"})
+    with pytest.raises(ReaderError):
+        reader.read()
