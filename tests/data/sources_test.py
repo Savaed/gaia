@@ -129,7 +129,7 @@ class CsvTestDict(TypedDict):
 @dataclass
 class TCETestClass(TCE):
     @property
-    def event(self) -> PeriodicEvent:
+    def event(self) -> PeriodicEvent:  # pragma: no cover
         return PeriodicEvent(1, 2, 3)
 
 
