@@ -1,8 +1,11 @@
 import asyncio
+import codecs
 import functools
+import json
+import pickle
 import random
 from collections.abc import Awaitable, Callable
-from typing import ParamSpec, TypeAlias, TypeVar
+from typing import Any, ParamSpec, TypeAlias, TypeVar
 
 import structlog
 
@@ -31,7 +34,6 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-# TODO: Testing decorated functions is a bit tricky. Search for a better solution
 # TODO: Allow to use without parentheses
 def retry(
     retries: int = 5,
@@ -79,3 +81,33 @@ def retry(
         return wrapped
 
     return wrapper
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """Simple JSON encoder to serialize any object which contains numpy arrays."""
+
+    def default(self, obj: Any) -> dict[str, Any]:
+        return {
+            "_type": str(type(obj)),
+            "value": codecs.encode(pickle.dumps(obj), "base64").decode("latin1"),
+        }
+
+
+class NumpyDecoder(json.JSONDecoder):
+    """Simple JSON decoder to deserialize string into any object which contains numpy arrays."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(object_hook=self._object_hook, *args, **kwargs)
+
+    def _object_hook(self, obj: Any) -> Any:
+        if "_type" in obj:
+            return pickle.loads(codecs.decode(obj["value"].encode("latin1"), "base64"))
+        return obj
+
+
+def json_numpy_encode(obj: Any) -> str:
+    return json.dumps(obj, cls=NumpyEncoder)
+
+
+def json_numpy_decode(string: str) -> Any:
+    return json.loads(string, cls=NumpyDecoder)
