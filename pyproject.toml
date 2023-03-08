@@ -12,9 +12,12 @@ requires-python = ">=3.10"
 dependencies = [
     "aiohttp",
     "astropy",
+    "dash",
+    "dash_bootstrap_components",
     "hydra-core",
     "numpy",
     "pandas",
+    "plotly",
     "rich",
     "structlog",
     "tensorflow",
@@ -35,6 +38,9 @@ pythonpath = "."
 [tool.coverage.run]
 plugins = ["covdefaults"]
 omit = ["**/conftest.py", "**/progress.py", "**/log.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "def __repr__", "def __str__"]
 
 [tool.black]
 line-length = 100
