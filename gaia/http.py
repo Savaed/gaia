@@ -11,7 +11,7 @@ class ApiError(Exception):
     status: int
     url: str | None = None
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return f"{self.status}: {self.message} {self.url or ''}"
 
 
