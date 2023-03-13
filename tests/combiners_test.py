@@ -107,7 +107,7 @@ async def test_combine__skip_already_combined_files(mocker, combiner_with_meta_k
     mocker.patch("gaia.data.combiners.tf.io.gfile.listdir", return_value=TEST_FITS_PATHS)
     mocker.patch("gaia.data.combiners.read_fits_table", side_effect=[TEST_FITS_DICT])
     result = await anext(combiner_with_meta_kepid1.combine())
-    result == ("kepid2", {"quarter1": TEST_FITS_DICT})
+    assert result == ("kepid2", {"quarter1": TEST_FITS_DICT})
 
 
 @pytest.mark.asyncio

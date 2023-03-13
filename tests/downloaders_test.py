@@ -186,7 +186,7 @@ async def test_download_time_series__save_meta(http_responses, mocker, downloade
     mocker.patch("gaia.downloaders.get_quarter_prefixes", return_value=("a_pref", "b_pref"))
     mocker.patch("gaia.downloaders.download", side_effect=http_responses)
     await downloader.download_time_series(TEST_ID)
-    downloader._meta_path.read_text().splitlines() == [URL_A_PREF, URL_B_PREF]
+    assert downloader._meta_path.read_text().splitlines() == [URL_A_PREF, URL_B_PREF]
 
 
 @pytest.fixture
