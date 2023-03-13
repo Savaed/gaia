@@ -5,7 +5,7 @@ from gaia.enums import Cadence
 
 # Quarter index to filename prefix for long cadence Kepler data.
 # Reference: https://archive.stsci.edu/kepler/software/get_kepler.py
-_LONG_CADENCE_QUARTER_PREFIXES = (
+LONG_CADENCE_QUARTER_PREFIXES = (
     ["2009131105131"],
     ["2009166043257"],
     ["2009259160929"],
@@ -28,7 +28,7 @@ _LONG_CADENCE_QUARTER_PREFIXES = (
 
 # Quarter index to filename prefix for short cadence Kepler data.
 # Reference: https://archive.stsci.edu/kepler/software/get_kepler.py
-_SHORT_CADENCE_QUARTER_PREFIXES = (
+SHORT_CADENCE_QUARTER_PREFIXES = (
     ["2009131110544"],
     ["2009166044711"],
     ["2009201121230", "2009231120729", "2009259162342"],
@@ -60,8 +60,8 @@ def get_quarter_prefixes(cadence: Cadence) -> tuple[str, ...]:
         tuple[str, ...]: All quarters prefixes
     """
     queraters = (
-        _SHORT_CADENCE_QUARTER_PREFIXES
+        SHORT_CADENCE_QUARTER_PREFIXES
         if cadence is Cadence.SHORT
-        else _LONG_CADENCE_QUARTER_PREFIXES
+        else LONG_CADENCE_QUARTER_PREFIXES
     )
     return tuple(prefix for prefixes in queraters for prefix in prefixes)

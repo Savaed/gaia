@@ -29,8 +29,8 @@ def prefixes(request):
 @pytest.mark.parametrize(
     "cadence,const_name",
     [
-        (Cadence.LONG, "_LONG_CADENCE_QUARTER_PREFIXES"),
-        (Cadence.SHORT, "_SHORT_CADENCE_QUARTER_PREFIXES"),
+        (Cadence.LONG, "LONG_CADENCE_QUARTER_PREFIXES"),
+        (Cadence.SHORT, "SHORT_CADENCE_QUARTER_PREFIXES"),
     ],
     ids=["cadence_long", "cadence_short"],
 )
