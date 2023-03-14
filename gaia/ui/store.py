@@ -21,10 +21,10 @@ class RedisStore:
     def save(cls, data: Any) -> str:
         """Pickle, compress and save the data in an in-memory datastore.
 
-        Arguments:
+        Args:
             data (any): data to serialize
 
-        Insteps:
+        Raises:
             DataStoreError: Unable to serialized data
 
         Returns:
@@ -50,10 +50,10 @@ class RedisStore:
     def load(cls, key: str) -> Any:
         """Deserialize data stored under the specified key.
 
-        Arguments:
+        Args:
             key(str): The key. This is the SHA256 hash of the serialized data
 
-        Insteps:
+        Raises:
             KeyError: No data found for the specified key
 
         Returns:
