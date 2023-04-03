@@ -1,7 +1,10 @@
 import abc
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TypedDict
+
+import numpy as np
+import numpy.typing as npt
 
 
 class FromDictMixin(ABC):
@@ -125,3 +128,19 @@ class KeplerStellarParameters(StellarParameters):
     surface_gravity: float
     """log(g)"""
     metallicity: float
+
+
+Series: TypeAlias = npt.NDArray[np.float_]
+
+
+class TimeSeries(TypedDict):
+    TIME: Series
+
+
+class KeplerTimeSeries(TimeSeries):
+    MOM_CENTR1: Series
+    MOM_CENTR2: Series
+    PDCSAP_FLUX: Series
+
+
+PeriodicTimeSeries: TypeAlias = dict[str, TimeSeries]
