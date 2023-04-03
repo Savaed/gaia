@@ -1,10 +1,7 @@
 import abc
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Any, TypeAlias, TypedDict
-
-import numpy as np
-import numpy.typing as npt
+from typing import Any, TypeAlias
 
 
 class FromDictMixin(ABC):
@@ -80,6 +77,7 @@ class TCE(FromDictMixin, TargetRelatedObject):
 
     tce_id: ID
     name: str | None
+    label: str
 
     @property
     @abc.abstractmethod
@@ -87,7 +85,7 @@ class TCE(FromDictMixin, TargetRelatedObject):
         ...
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class KeplerTCE(TCE):
     opt_ghost_core_aperture_corr: float
     opt_ghost_halo_aperture_corr: float
@@ -105,10 +103,12 @@ class KeplerTCE(TCE):
         self.target_id = int(self.target_id)
         self.tce_id = int(self.tce_id)
 
+        if self._normalize_duration:
+            self.duration = round(self.duration / 24, 4)  # For Kepler 'duration' is in hours
+
     @property
     def event(self) -> PeriodicEvent:  # pragma: no cover
-        duration = self.duration / 24 if self._normalize_duration else self.duration
-        return PeriodicEvent(self.epoch, duration, self.period)
+        return PeriodicEvent(self.epoch, self.duration, self.period)
 
 
 @dataclass
@@ -125,13 +125,3 @@ class KeplerStellarParameters(StellarParameters):
     surface_gravity: float
     """log(g)"""
     metallicity: float
-
-
-class KeplerTimeSeries(TypedDict):
-    TIME: npt.NDArray[np.float_]
-    MOM_CENTR1: npt.NDArray[np.float_]
-    MOM_CENTR2: npt.NDArray[np.float_]
-    PDCSAP_FLUX: npt.NDArray[np.float_]
-
-
-KeplerQuarterlyTimeSeries: TypeAlias = dict[str, KeplerTimeSeries]
