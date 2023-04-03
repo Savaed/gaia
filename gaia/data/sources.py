@@ -4,15 +4,16 @@ They provide a convenient way to retrieve data such as time series or various sc
 without worrying about what the data format is or where it is located.
 """
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Generic, TypeVar
 
 import numpy as np
 import numpy.typing as npt
 
-from gaia.data.models import ID, TCE, StellarParameters
+from gaia.data.models import ID, TCE, PeriodicEvent, StellarParameters
 from gaia.io import ReaderError, TableReader, TimeSeriesReader
 
 
@@ -135,6 +136,33 @@ class TceSource(Generic[TTCE]):
         self._reader = reader
         self._data: list[TTCE] = []
 
+    @cached_property
+    def tce_count(self) -> int:
+        """Number of unique TCEs."""
+        if not self._data:  # pragma: no cover
+            self._load_data()
+        return len(set(self._data))
+
+    @cached_property
+    def target_unique_ids(self) -> set[ID]:
+        """Unique targets IDs."""
+        if not self._data:  # pragma: no cover
+            self._load_data()
+        return {tce.target_id for tce in self._data}
+
+    @cached_property
+    def labels_distribution(self) -> dict[str, int]:
+        """TCE labels distribution."""
+        if not self._data:  # pragma: no cover
+            self._load_data()
+        return dict(Counter([tce.label for tce in self._data]))
+
+    @cached_property
+    def events(self) -> list[PeriodicEvent]:
+        if not self._data:  # pragma: no cover
+            self._load_data()
+        return [tce.event for tce in self._data]
+
     def get_all_for_target(self, target_id: ID) -> list[TTCE]:
         """Retrieve all TCEs for a particular observation target if any.
 
@@ -185,20 +213,18 @@ class TceSource(Generic[TTCE]):
 
     def _get(self, predicate: Callable[[TTCE], bool]) -> list[TTCE]:
         if not self._data:  # pragma: no cover
-            try:
-                data = self._reader.read()
-            except ReaderError as ex:
-                raise DataSourceError(ex)
-
-            # HACK: This is a `TTCE` real type at runtime. See: https://stackoverflow.com/a/63318205
-            generic_type: type[TTCE] = self.__orig_class__.__args__[0]  # type: ignore
-
-            try:
-                self._data = [generic_type.from_flat_dict(x) for x in data]
-            except (TypeError, KeyError) as ex:
-                raise DataSourceError(ex)
-
+            self._load_data()
         return list(filter(predicate, self._data))
+
+    def _load_data(self) -> None:
+        # HACK: This is a `TTCE` real type at runtime. See: https://stackoverflow.com/a/63318205
+        generic_type: type[TTCE] = self.__orig_class__.__args__[0]  # type: ignore
+
+        try:
+            data = self._reader.read()
+            self._data = [generic_type.from_flat_dict(dct) for dct in data]
+        except (TypeError, KeyError, ReaderError) as ex:
+            raise DataSourceError(ex)
 
 
 TParams = TypeVar("TParams", bound=StellarParameters)

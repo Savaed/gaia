@@ -124,9 +124,10 @@ class CsvTestDict(TypedDict):
     tce_id: int
     name: str
     params_test: float
+    label: str
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class TCETestClass(TCE):
     @property
     def event(self) -> PeriodicEvent:  # pragma: no cover
@@ -138,7 +139,7 @@ class StellarParamsTestClass(StellarParameters):
     params_test: float
 
 
-TEST_CSV_DICT = CsvTestDict(target_id=1, tce_id=1, name="tce", params_test=1.2)
+TEST_CSV_DICT = CsvTestDict(target_id=1, tce_id=1, name="tce", params_test=1.2, label="test_label")
 
 
 @pytest.fixture
@@ -223,17 +224,23 @@ def test_tce_source_get_all_for_target__object_from_dict_create_error():
     "reader_output,expected",
     [
         (
-            [CsvTestDict(target_id=1, tce_id=1, name="tce", params_test=1.2)],
-            [TCETestClass(target_id=1, tce_id=1, name="tce")],
+            [CsvTestDict(target_id=1, tce_id=1, name="tce", params_test=1.2, label="test_label")],
+            [TCETestClass(target_id=1, tce_id=1, name="tce", label="test_label")],
         ),
         (
             [
-                CsvTestDict(target_id=1, tce_id=1, name="tce", params_test=1.2),
-                CsvTestDict(target_id=1, tce_id=2, name="tce2", params_test=1.2),
+                CsvTestDict(target_id=1, tce_id=1, name="tce", params_test=1.2, label="test_label"),
+                CsvTestDict(
+                    target_id=1,
+                    tce_id=2,
+                    name="tce2",
+                    params_test=1.2,
+                    label="test_label",
+                ),
             ],
             [
-                TCETestClass(target_id=1, tce_id=1, name="tce"),
-                TCETestClass(target_id=1, tce_id=2, name="tce2"),
+                TCETestClass(target_id=1, tce_id=1, name="tce", label="test_label"),
+                TCETestClass(target_id=1, tce_id=2, name="tce2", label="test_label"),
             ],
         ),
     ],
@@ -283,7 +290,7 @@ def test_tce_source_get_by_id__return_correct_data(valid_csv_reader):
     """Test that correct TCE are returned."""
     source = TceSource[TCETestClass](valid_csv_reader)
     result = source.get_by_id(1, 1)
-    assert result == TCETestClass(target_id=1, tce_id=1, name="tce")
+    assert result == TCETestClass(target_id=1, tce_id=1, name="tce", label="test_label")
 
 
 def test_tce_source_get_by_name__reader_error(error_csv_reader):
@@ -316,4 +323,72 @@ def test_tce_source_get_by_name__return_correct_data(valid_csv_reader):
     """Test that correct TCE are returned."""
     source = TceSource[TCETestClass](valid_csv_reader)
     result = source.get_by_name("tce")
-    assert result == TCETestClass(target_id=1, tce_id=1, name="tce")
+    assert result == TCETestClass(target_id=1, tce_id=1, name="tce", label="test_label")
+
+
+@pytest.fixture(params=["single_target", "two_targets", "empty"])
+def fixture_name(request):
+    """Return a list of two dicts with two TCEs for one or two targets."""
+    if request.param == "single_target":
+        return (
+            [
+                CsvTestDict(
+                    target_id=1,
+                    tce_id=1,
+                    name="target1_tce1",
+                    params_test=0.1,
+                    label="test_label",
+                ),
+                CsvTestDict(
+                    target_id=1,
+                    tce_id=2,
+                    name="target1_tce2",
+                    params_test=0.2,
+                    label="test_label",
+                ),
+            ],
+            {1},
+            2,
+        )
+
+    if request.param == "two_targets":
+        return (
+            [
+                CsvTestDict(
+                    target_id=1,
+                    tce_id=1,
+                    name="target1_tce1",
+                    params_test=0.1,
+                    label="test_label",
+                ),
+                CsvTestDict(
+                    target_id=2,
+                    tce_id=2,
+                    name="target2_tce2",
+                    params_test=0.2,
+                    label="test_label",
+                ),
+            ],
+            {1, 2},
+            2,
+        )
+
+    return [], set(), 0
+
+
+def test_tce_source_tce_count__return_correct_count(fixture_name):
+    """Test that the correct count of TCEs is returned."""
+    reader_mock = Mock(CsvTableReader)
+    dct, _, expected = fixture_name
+    reader_mock.read.return_value = dct
+    tce_count = TceSource[TCETestClass](reader_mock).tce_count
+    assert tce_count == expected
+
+
+def test_tce_source_target_unique_ids__return_correct_count(fixture_name):
+    """Test that the correct unique targets IDs are returned."""
+    reader_mock = Mock(CsvTableReader)
+    dct, expected, _ = fixture_name
+    reader_mock.read.return_value = dct
+    target_count = TceSource[TCETestClass](reader_mock).target_unique_ids
+    assert target_count == expected
