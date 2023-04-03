@@ -1,10 +1,12 @@
 import gzip
 import hashlib
 import pickle
-from typing import Any
+from typing import Any, Iterable, TypeAlias, TypedDict
 
 import fakeredis
 import structlog
+
+from gaia.data.models import TCE, StellarParameters
 
 
 logger = structlog.stdlib.get_logger()
@@ -39,7 +41,6 @@ class RedisStore:
         hash_key = cls._hash(serialized_data)
 
         if cls._store.exists(hash_key):
-            logger.warning()
             return hash_key
 
         cls._store.set(hash_key, serialized_data)
@@ -70,3 +71,31 @@ class RedisStore:
     @staticmethod
     def _hash(serialized_data: bytes) -> str:
         return hashlib.sha256(serialized_data).hexdigest()
+
+
+PeriodicData: TypeAlias = dict[str, Iterable[float]]
+
+
+class GlobalStore(TypedDict):
+    data_origin: str
+    redis_data_key: str
+    available_graphs: dict[str, str]
+
+
+class AllData(TypedDict):
+    period_edges: PeriodicData
+    series: dict[str, PeriodicData]
+    time: PeriodicData
+    tce_transits: dict[str, Iterable[str]]
+    tces: Iterable[TCE]
+    stellar_parameters: StellarParameters
+
+
+class TimeSeriesAIOData(TypedDict):
+    id_: str
+    name: str
+    time: PeriodicData
+    series: PeriodicData
+    period_edges: PeriodicData
+    periods_labels: dict[str, Iterable[str]]
+    tce_transits: PeriodicData
