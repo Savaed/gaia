@@ -79,7 +79,7 @@ def render_insight(*, icon: str, icon_color: str, header: str, text: str, footer
     return html.Div(
         [
             html.Div(
-                html.I(className=f"{icon} insight-icon"), className=f"insight-icon-bg {icon_color}"
+                html.I(className=f"{icon} insight-icon"), className=f"insight-icon-bg {icon_color}",
             ),
             html.H3(header, className="insight-header"),
             html.H1(text, className="insight-text"),
@@ -96,7 +96,7 @@ def render_rows(data: dict[str, Any]) -> list[html.Div]:
         p_value = value.value if isinstance(value, Enum) else value
         h3 = f"{field}:"
         rows.append(
-            html.Div([html.H3(h3), html.P(p_value, className="text-muted")], className="data-row")
+            html.Div([html.H3(h3), html.P(p_value, className="text-muted")], className="data-row"),
         )
     return rows
 
@@ -201,9 +201,9 @@ def render_tce(tce: TCE):
                                     [
                                         html.H3(tce.name or f"TCE {tce.tce_id}"),
                                         html.Small(
-                                            f"{tce.target_id}/{tce.tce_id}", className="text-muted"
+                                            f"{tce.target_id}/{tce.tce_id}", className="text-muted",
                                         ),
-                                    ]
+                                    ],
                                 ),
                                 html.Span(tce.label.name, className=f"badge bg-{icon_color}"),
                             ],
@@ -295,7 +295,7 @@ def render_tces():
                     render_placeholder(
                         "No TCEs available. Please search for target or TCE first",
                         placeholder_class="tce-placeholder",
-                    )
+                    ),
                 ),
                 id=ComponentIds.TCE_LIST,
                 className="tces",
@@ -306,13 +306,13 @@ def render_tces():
 
 
 def render_time_series_graphs_dropdown(
-    available_graphs: Iterable[str | DropdownOption], id: str | dict[str, str]
+    available_graphs: Iterable[str | DropdownOption], id: str | dict[str, str],
 ) -> html.Div:
     return html.Div(
         html.Details(
             [
                 html.Summary(
-                    html.Div(html.I(className="fa-solid fa-plus"), className="add-time-series-btn")
+                    html.Div(html.I(className="fa-solid fa-plus"), className="add-time-series-btn"),
                 ),
                 dcc.Checklist(
                     options=available_graphs,
@@ -323,12 +323,12 @@ def render_time_series_graphs_dropdown(
                 ),
             ],
             id="add-time-series-details",
-        )
+        ),
     )
 
 
 def render_tce_icon(
-    icon: str, color: str, background_color: str, icon_class: str, background_class: str
+    icon: str, color: str, background_color: str, icon_class: str, background_class: str,
 ) -> html.Div:
     return html.Div(
         html.I(className=f"{icon} {color} {icon_class}"),
@@ -348,7 +348,7 @@ def render_tce_icon(
     prevent_initial_call=True,
 )
 def update_avaialble_graphs_options(
-    selected_graphs: list[str], store: GlobalStore
+    selected_graphs: list[str], store: GlobalStore,
 ) -> list[DropdownOption]:
     # Return all availables graphs - selected graphs
     new_options = [
@@ -370,7 +370,7 @@ def update_avaialble_graphs_options(
     prevent_initial_call=True,
 )
 def update_avaialble_graphs_value(
-    _: int, currently_selected_graphs: list[str]
+    _: int, currently_selected_graphs: list[str],
 ) -> list[DropdownOption]:
     if not any([trigger["value"] for trigger in ctx.triggered]):  # No update, graph just rendered
         raise PreventUpdate
@@ -381,7 +381,7 @@ def update_avaialble_graphs_value(
 
 
 def create_graphs(
-    store: GlobalStore, selected_graphs_ids: list[str], _: list[dict[Any, Any]]
+    store: GlobalStore, selected_graphs_ids: list[str], _: list[dict[Any, Any]],
 ) -> list[TimeSeriesAIO]:
     try:
         data: AllData = RedisStore.load(store["redis_data_key"])
@@ -391,7 +391,7 @@ def create_graphs(
     time_series = data["series"]
     new_graphs: list[TimeSeriesAIO] = []
 
-    for graph_id in selected_graphs_ids:        
+    for graph_id in selected_graphs_ids:
         # `graph_id` = "series" or "series1,series2,..."
         graph_name = get_key_for_value(graph_id, store["available_graphs"])
 
@@ -404,14 +404,14 @@ def create_graphs(
                 tce_transit_highlights=data["tce_transits"],
                 id_=graph_id,
                 name=graph_name,
-            )
+            ),
         )
 
     return new_graphs
 
 
 def add_remove_graphs(
-    store: GlobalStore, selected_graphs_ids: list[str], rendered_graphs: list[dict[Any, Any]]
+    store: GlobalStore, selected_graphs_ids: list[str], rendered_graphs: list[dict[Any, Any]],
 ) -> list[TimeSeriesAIO]:
     rendered_graphs_ids = {graph["props"]["id"] for graph in rendered_graphs}
     graph_ids_to_add = set(selected_graphs_ids) - rendered_graphs_ids
@@ -436,7 +436,7 @@ def add_remove_graphs(
                     tce_transit_highlights=data["tce_transits"],
                     id_=graph_id,
                     name=graph_name,
-                )
+                ),
             )
 
         return rendered_graphs + new_graphs
@@ -447,7 +447,7 @@ def add_remove_graphs(
 
 
 UpdateGraphsFunction: TypeAlias = Callable[
-    [GlobalStore, list[str], list[dict[Any, Any]]], list[TimeSeriesAIO]
+    [GlobalStore, list[str], list[dict[Any, Any]]], list[TimeSeriesAIO],
 ]
 
 
@@ -468,7 +468,7 @@ UPDATE_GRAPHS_HANDLERS: dict[str, UpdateGraphsFunction] = {
     prevent_initial_call=True,
 )
 def update_graphs_collection(
-    store: GlobalStore, selected_graphs: list[str], rendered_graphs: list[dict[Any, Any]]
+    store: GlobalStore, selected_graphs: list[str], rendered_graphs: list[dict[Any, Any]],
 ) -> list[TimeSeriesAIO]:
     update_handler = UPDATE_GRAPHS_HANDLERS[ctx.triggered_id]
     return update_handler(store, selected_graphs, rendered_graphs)
@@ -485,7 +485,7 @@ def render_tce_labels_distribution(labels_distribution: dict[str, int]) -> html.
 
 
 def create_dashboard(
-    tce_source: TceSource[TCE], available_time_series_graphs: dict[str, str], data_origin: str
+    tce_source: TceSource[TCE], available_time_series_graphs: dict[str, str], data_origin: str,
 ) -> html.Div:
     insights = html.Div(
         [
@@ -549,7 +549,7 @@ def create_dashboard(
                 [dcc.Graph(figure=fig, className="tce-dist-graph") for fig in histogram_figures],
                 className="tce-dist-container",
             ),
-        ]
+        ],
     )
 
     return html.Div(
@@ -568,7 +568,7 @@ def create_dashboard(
                     insights,
                     tces_histograms,
                     time_series_graphs,
-                ]
+                ],
             ),
             html.Div([render_stellar_parameters(), render_tces()], className="right"),
             dcc.Store(
