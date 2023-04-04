@@ -2,7 +2,7 @@ import abc
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
-from typing import Any, TypeAlias, TypedDict
+from typing import Any, Iterable, TypeAlias, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -171,3 +171,5 @@ class KeplerTimeSeries(TimeSeries):
 
 
 PeriodicTimeSeries: TypeAlias = dict[str, TimeSeries]
+
+PeriodicData: TypeAlias = dict[str, Iterable[float]]
