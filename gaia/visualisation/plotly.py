@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from gaia.data.models import PeriodicEvent
+from gaia.data.models import PeriodicEvent, TceLabel
 
 
 class Margins(TypedDict):
@@ -78,7 +78,7 @@ def plot_empty_scatter(margins: Margins | None = None) -> go.Figure:
     return fig.update_layout(margin=_to_plotly_margins(margins))
 
 
-def render_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, go.Figure]:
+def plot_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, go.Figure]:
     """Create `plotly` histograms for the TCE orbital periods and transit durations.
 
     Args:
@@ -102,3 +102,28 @@ def render_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, 
             height=300,
         ),
     )
+
+
+def plot_tces_classes_distribution(distribution: dict[TceLabel, int]) -> go.Figure:
+    print(distribution)
+    unlabeled_count = distribution[TceLabel.UNKNOWN]
+    all_count = sum(distribution.values())
+    labels = [
+        "unknown",
+        "known",
+        TceLabel.PC.name,
+        TceLabel.FP.name,
+        TceLabel.AFP.name,
+        TceLabel.NTP.name,
+    ]
+    parent = ["", "", "known", "known", TceLabel.FP.name, TceLabel.FP.name]
+    count = [
+        unlabeled_count,
+        all_count - unlabeled_count,
+        distribution[TceLabel.PC],
+        distribution[TceLabel.AFP] + distribution[TceLabel.NTP],
+        distribution[TceLabel.AFP],
+        distribution[TceLabel.NTP],
+    ]
+    fig = go.Figure(go.Sunburst(labels=labels, parents=parent, values=count, branchvalues="total"))
+    return fig
