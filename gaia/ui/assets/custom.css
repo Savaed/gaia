@@ -1,0 +1,659 @@
+/* --------------- ROOT VARIABLES ------------------ */
+:root {
+    --color-primary: #7380ec;
+    --color-danger: #ff7782;
+    --color-success: #22ca4c;
+    --color-warning: #fb5;
+
+    --color-primary-light: #7380ec4d;
+    --color-danger-light: #ff77824d;
+    --color-success-light: #22ca4c4d;
+    --color-warning-light: #ffbb554d;
+
+    --color-white: #fff;
+    --color-info-dark: #7d8da1;
+    --color-dark: #363949;
+    --color-light: rgba(132, 139, 200, 0.18);
+    --color-primary-variant: #111e88;
+    --color-dark-variant: #677483;
+    --color-background: #f6f6f9;
+
+    --card-border-radius: 2rem;
+    --border-radius-1: 0.4rem;
+    --border-radius-2: 0.8rem;
+    --border-radius-3: 1.2rem;
+
+    --card-padding: 1.8rem;
+    --padding: 1.2rem;
+
+    --box-shadow: 0 2rem 3rem var(--color-light);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    outline: 0;
+    border: 0;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 14px;
+}
+
+body {
+    font-family: poppins, sans-serif;
+    font-size: 0.88rem;
+    background-color: var(--color-background);
+    overflow-x: hidden;
+}
+
+h1 {
+    font-weight: 800;
+    font-size: 1.8rem;
+}
+
+h2 {
+    font-size: 1.4rem;
+}
+
+h3 {
+    font-size: 0.87rem;
+}
+
+h4 {
+    font-size: 0.8rem;
+}
+
+h5 {
+    font-size: 0.77rem;
+}
+
+small {
+    font-size: 0.75rem;
+}
+
+p {
+    color: var(--color-dark-variant);
+}
+
+main {
+    margin-top: 1.4rem;
+    margin-left: 1.4rem;
+}
+
+details>summary {
+    list-style: none;
+}
+
+details>summary::marker,
+
+details>summary::-webkit-details-marker .tce-dist-graph {
+    background: var(--color-white);
+    border-radius: var(--card-border-radius);
+    padding: 0;
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+}
+
+.right {
+    margin-right: 1.6rem;
+}
+
+.app-container {
+    display: grid;
+    width: 100%;
+    margin: 0 auto;
+    gap: 1.6rem;
+    grid-template-columns: auto 26rem;
+    padding-bottom: 3rem;
+}
+
+.text-muted {
+    color: var(--color-info-dark);
+}
+
+.badge {
+    color: var(--color-white);
+    border-radius: var(--border-radius-1);
+    padding: 0 0.5rem;
+    font-weight: 500;
+    margin-left: auto;
+}
+
+.data-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.data-rows {
+    display: grid;
+    row-gap: 0.6rem;
+}
+
+/* ---------- COLORS ------- */
+
+.primary {
+    color: var(--color-primary);
+}
+
+.danger {
+    color: var(--color-danger);
+}
+
+.success {
+    color: var(--color-success);
+}
+
+.warning {
+    color: var(--color-warning);
+}
+
+/* ---------- BACKGROUND COLORS ------- */
+
+.bg-primary {
+    background-color: var(--color-primary);
+}
+
+.bg-danger {
+    background-color: var(--color-danger);
+}
+
+.bg-success {
+    background-color: var(--color-success);
+}
+
+.bg-warning {
+    background-color: var(--color-warning);
+}
+
+/* ---------- BACKGROUND LIGHT COLORS ------- */
+
+.bg-primary-light {
+    background-color: var(--color-primary-light);
+}
+
+.bg-danger-light {
+    background-color: var(--color-danger-light);
+}
+
+.bg-success-light {
+    background-color: var(--color-success-light);
+}
+
+.bg-warning-light {
+    background-color: var(--color-warning-light);
+}
+
+/* --------- INSIGHTS --------- */
+
+.insights {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.6rem;
+    margin-top: 2rem;
+}
+
+.insight {
+    background: var(--color-white);
+    padding: var(--card-padding);
+    border-radius: var(--card-border-radius);
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.insight:hover {
+    box-shadow: none;
+}
+
+.insight-icon-bg {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.insight .insight-icon {
+    border-radius: 50%;
+    color: var(--color-white);
+    font-size: 2rem;
+}
+
+.insight .insight-header {
+    font-size: 1rem;
+    margin: 1rem 0 0.6rem;
+}
+
+.insight .insight-text {
+    margin-bottom: 0.6rem;
+}
+
+/* -------- TARGET SEARCHBAR ---------*/
+
+input.target-or-tce-search-bar {
+    display: inline-block;
+    background: var(--color-light);
+    border-radius: var(--border-radius-1);
+    margin-top: 1rem;
+    padding: 0.5rem 1.6rem;
+}
+
+/* ---------- TIME SERIES --------- */
+
+.time-series-container {
+    margin-top: 2rem;
+}
+
+.time-series-header {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+    margin-bottom: 1.4rem;
+}
+
+.time-series-graphs {
+    margin-top: 2rem;
+    display: grid;
+    gap: 3rem;
+}
+
+.time-series-graph-container {
+    background: var(--color-white);
+    border-radius: var(--card-border-radius);
+    padding: var(--card-padding);
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+}
+
+.time-series-graph-container:hover {
+    box-shadow: none;
+}
+
+.time-series-graph-switches {
+    display: grid;
+    gap: 1.4rem;
+    margin-bottom: 0.3rem;
+    justify-content: start;
+}
+
+.time-series-graph-settings {
+    margin-top: 1rem;
+    display: grid;
+    /* This is for auto grow and centering (in fact there are 2 columns only) */
+    grid-template-columns: repeat(3, auto);
+    gap: 2rem;
+}
+
+.time-series-graph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.time-series-graph-title {
+    display: flex;
+}
+
+.add-time-series-btn {
+    width: 4rem;
+    height: 4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-white);
+    border-radius: 50%;
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+    cursor: pointer;
+}
+
+.add-time-series-btn>i {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--color-success);
+}
+
+.add-time-series-option {
+    border-radius: var(--border-radius-1);
+    padding: 0.6rem 0.8rem;
+    display: flex;
+    cursor: pointer;
+    color: var(--color-dark);
+}
+
+.add-time-series-option>input {
+    display: none;
+}
+
+.add-time-series-option:hover {
+    background: var(--color-background);
+}
+
+.add-time-series-btn:hover {
+    box-shadow: none;
+}
+
+.add-time-series-options {
+    display: grid;
+    position: absolute;
+    z-index: 1;
+    background: var(--color-white);
+    border-radius: var(--border-radius-2);
+    margin-top: 1rem;
+    padding: 1rem;
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+}
+
+.add-time-series-options:hover {
+    box-shadow: none;
+}
+
+.time-series-remove {
+    cursor: pointer;
+    font-weight: 900;
+    font-size: 1.6rem;
+    display: flex;
+    justify-self: right;
+}
+
+.time-series-remove:hover {
+    color: var(--color-danger);
+    border: none;
+    text-shadow: 0 0 3px var(--color-danger);
+    transition: all 200ms ease;
+}
+
+/* -------- STELLAR PARAMETERS --------- */
+
+.stellar-parameters-container {
+    margin-top: 4rem;
+}
+
+.stellar-parameters-placeholder {
+    display: grid;
+    padding: 3rem 0rem;
+    gap: 1rem;
+}
+
+.stellar-parameters-placeholder>i {
+    font-size: 3rem;
+    color: var(--color-info-dark);
+    margin: auto;
+}
+
+.stellar-parameters-placeholder>p {
+    text-align: center;
+}
+
+.stellar-parameters {
+    background: var(--color-white);
+    border-radius: var(--card-border-radius);
+    padding: var(--card-padding);
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+    display: grid;
+    gap: 1.5rem;
+}
+
+.stellar-parameters:hover {
+    box-shadow: none;
+}
+
+.stellar-parameters-overview {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+/* --------- TCES --------  */
+
+.tce-placeholder {
+    background: var(--color-white);
+    box-shadow: var(--box-shadow);
+    border-radius: var(--border-radius-2);
+    padding: 1.4rem var(--card-padding);
+    transition: box-shadow 300ms ease;
+    display: grid;
+    gap: 1rem;
+}
+
+.tce-placeholder:hover {
+    box-shadow: none;
+}
+
+.tce-placeholder>i {
+    color: var(--color-info-dark);
+    font-size: 2rem;
+    margin: auto;
+}
+
+.tce-placeholder>p {
+    text-align: center;
+}
+
+.tces-container {
+    margin-top: 2rem;
+}
+
+.tces-container>h2 {
+    margin-bottom: 1.4rem;
+}
+
+.tces {
+    display: grid;
+    gap: 1rem;
+}
+
+.tce-overview-icon {
+    font-size: 2rem;
+}
+
+.tce-overview-icon-bg {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--border-radius-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tce {
+    background: var(--color-white);
+    box-shadow: var(--box-shadow);
+    border-radius: var(--border-radius-2);
+    padding: 1.4rem var(--card-padding);
+    transition: box-shadow 300ms ease;
+}
+
+.tce:hover {
+    box-shadow: none;
+}
+
+.tce-overview {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+}
+
+.tce-details {
+    margin-top: 1.4rem;
+}
+
+/* ------ SWITCH ------- */
+
+.switch input {
+    display: none;
+}
+
+.switch {
+    display: flex;
+    gap: 1rem;
+}
+
+.slider {
+    position: relative;
+    width: 32px;
+    height: 16px;
+    border-radius: 16px;
+    box-shadow: 0 0 0 1px var(--color-info-dark), 0 0 2px var(--color-info-dark);
+    cursor: pointer;
+    border: 1px solid transparent;
+    overflow: hidden;
+    transition: 200ms;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    width: 100%;
+    height: 100%;
+    background-color: var(--color-info-dark);
+    border-radius: 16px;
+    /*translateX(-(w-h))*/
+    transform: translateX(-16px);
+    transition: 200ms;
+}
+
+.switch input:checked+.slider:before {
+    /*translateX(w-h)*/
+    transform: translateX(16px);
+    background-color: var(--color-success);
+}
+
+.switch input:checked+.slider {
+    box-shadow: 0 0 0 1px var(--color-success), 0 0 4px var(--color-success);
+}
+
+/* ---------- DROPDOWN ------- */
+
+.dropdown-menu {
+    display: block;
+    gap: 0.4rem;
+}
+
+.dropdown {
+    background: var(--color-white);
+    border-radius: var(--border-radius-1);
+    border: none;
+    background: var(--color-white);
+    box-shadow: var(--box-shadow);
+    width: 300px;
+    height: 40px;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dropdown-item-label {
+    display: block;
+    margin: 1rem;
+    padding: 0.3rem;
+    border-radius: 6px;
+}
+
+/* -------- SELECT --------- */
+
+.Select-control {
+    border: none;
+    transition: all 300ms ease;
+    background: transparent;
+}
+
+.Select-control:hover {
+    box-shadow: none;
+}
+
+.Select--multi .Select-value {
+    background: var(--color-primary);
+    color: var(--color-background);
+    height: 100%;
+    border-radius: var(--border-radius-2);
+    border: none;
+    font-size: inherit;
+    line-height: inherit;
+    padding: 0.1rem 0
+}
+
+.Select--multi .Select-value-icon:focus,
+.Select--multi .Select-value-icon:hover {
+    color: var(--color-primary-variant);
+    background: transparent;
+}
+
+.Select--multi .Select-value-icon {
+    padding: 0 0.6rem;
+    border: none;
+    border-radius: 0;
+    transition: all 200ms ease;
+}
+
+.is-focused:not(.is-open)>.Select-control {
+    box-shadow: none;
+}
+
+.Select-menu-outer {
+    background: var(--color-background);
+    color: var(--color-dark);
+    border: none;
+    border-radius: var(--border-radius-2);
+    display: grid;
+    gap: 1rem;
+    box-shadow: none;
+}
+
+.VirtualizedSelectFocusedOption {
+    background: var(--color-white);
+    border-radius: var(--border-radius-2);
+}
+
+.Select--multi .Select-value-label {
+    border-radius: 0;
+    padding: 0 0.6rem 0 0;
+}
+
+.Select-arrow {
+    color: var(--color-dark);
+}
+
+.Select--single>.Select-control .Select-value,
+.Select-placeholder {
+    color: var(--color-dark);
+}
+
+/* ------- TCE LABELS DISTRIBUTION --------- */
+
+.tce-dist-graph {
+    background: var(--color-white);
+    border-radius: var(--card-border-radius);
+    padding: var(--card-padding);
+    box-shadow: var(--box-shadow);
+    transition: all 300ms ease;
+}
+
+.tce-dist-graph:hover {
+    box-shadow: none;
+}
+
+.tce-dist-header {
+    margin: 2rem 0 1.4rem;
+}
+
+.tce-dist-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.6rem;
+}
