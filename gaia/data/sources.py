@@ -13,7 +13,7 @@ from typing import Generic, TypeVar
 import numpy as np
 import numpy.typing as npt
 
-from gaia.data.models import ID, TCE, PeriodicEvent, StellarParameters
+from gaia.data.models import ID, TCE, PeriodicEvent, StellarParameters, TceLabel
 from gaia.io import ReaderError, TableReader, TimeSeriesReader
 
 
@@ -151,11 +151,14 @@ class TceSource(Generic[TTCE]):
         return {tce.target_id for tce in self._data}
 
     @cached_property
-    def labels_distribution(self) -> dict[str, int]:
+    def labels_distribution(self) -> dict[TceLabel, int]:
         """TCE labels distribution."""
         if not self._data:  # pragma: no cover
             self._load_data()
-        return dict(Counter([tce.label for tce in self._data]))
+
+        distribution = dict.fromkeys(list(TceLabel), 0)  # Make sure all labels are present
+        distribution |= dict(Counter([tce.label for tce in self._data]))
+        return distribution
 
     @cached_property
     def events(self) -> list[PeriodicEvent]:
