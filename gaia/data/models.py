@@ -1,6 +1,7 @@
 import abc
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
+from enum import Enum
 from typing import Any, TypeAlias, TypedDict
 
 import numpy as np
@@ -62,11 +63,26 @@ class PeriodicEvent:
 ID: TypeAlias = int | str
 
 
+TCE_NO_NAME_FLAG = "NO_NAME"
+
+
 @dataclass
 class TargetRelatedObject:
     """Object related to the target star, binary or multiple system."""
 
     target_id: ID
+
+
+class TceLabel(Enum):
+    PC = "PLANET_CANDIDATE"
+    NTP = "NON_TRANSITING_PHENOMENA"
+    AFP = "ASTROPHYSICAL_FALSE_POSITIVE"
+    UNKNOWN = "UNKNOWN"
+    FP = "FALSE_POSITIVE"
+    """Generic non-PC label. Prefer AFP and NTP.
+
+    This should only be used when there is no method to determine whether TCE is AFP or NTP.
+    """
 
 
 @dataclass
@@ -80,12 +96,20 @@ class TCE(FromDictMixin, TargetRelatedObject):
 
     tce_id: ID
     name: str | None
-    label: str
+    label: TceLabel
 
     @property
     @abc.abstractmethod
     def event(self) -> PeriodicEvent:
         ...
+
+    @classmethod
+    def from_flat_dict(cls, data: dict[str, Any], mapping: dict[str, str] | None = None) -> Any:
+        tce: TCE = super().from_flat_dict(data, mapping)
+
+        # Label is saved as `TceLabel.name` so it must be casted to the actual `TceLabel` enum
+        tce.label = TceLabel[tce.label]  # type: ignore
+        return tce
 
 
 @dataclass(unsafe_hash=True)
@@ -105,6 +129,9 @@ class KeplerTCE(TCE):
     def __post_init__(self) -> None:  # pragma: no cover
         self.target_id = int(self.target_id)
         self.tce_id = int(self.tce_id)
+
+        if self.name == TCE_NO_NAME_FLAG:  # This is for easier bool(tce)
+            self.name = None
 
         if self._normalize_duration:
             self.duration = round(self.duration / 24, 4)  # For Kepler 'duration' is in hours
