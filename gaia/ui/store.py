@@ -1,12 +1,12 @@
 import gzip
 import hashlib
 import pickle
-from typing import Any, Iterable, TypeAlias, TypedDict
+from typing import Any, Iterable, TypedDict
 
 import fakeredis
 import structlog
 
-from gaia.data.models import TCE, StellarParameters
+from gaia.data.models import TCE, PeriodicData, StellarParameters
 
 
 logger = structlog.stdlib.get_logger()
@@ -71,9 +71,6 @@ class RedisStore:
     @staticmethod
     def _hash(serialized_data: bytes) -> str:
         return hashlib.sha256(serialized_data).hexdigest()
-
-
-PeriodicData: TypeAlias = dict[str, Iterable[float]]
 
 
 class GlobalStore(TypedDict):
