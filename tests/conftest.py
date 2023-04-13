@@ -1,16 +1,12 @@
 import asyncio
-import shutil
 from collections.abc import Iterable
-from pathlib import Path
-from typing import TypeAlias
+from typing import Mapping, TypeAlias
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
 from pyparsing import Any
-
-from gaia.log import configure_logging
 
 
 @pytest.fixture
@@ -21,32 +17,21 @@ def http_response(request):
     return MagicMock(**{f"{method}.return_value.__aenter__.return_value": response_mock})
 
 
-@pytest.fixture(scope="session")
-def setup_logging():
-    """Setup test logging. Logging directory is removed after test session end."""
-    test_log_dir = Path().cwd() / "test_logs/"
-    try:
-        configure_logging(test_log_dir.as_posix())
-        yield
-    finally:
-        shutil.rmtree(test_log_dir)
+def assert_dict_with_numpy_equal(a: Mapping[Any, Any], b: Mapping[Any, Any]) -> None:
+    """Assert that two dictionaries with NumPy arrays as several of their values are equal.
 
-
-AnyDict: TypeAlias = dict[Any, Any]
-
-
-def assert_dict_with_numpy_equal(a: AnyDict, b: AnyDict) -> None:
-    """Assert that two dictionaries with NumPy arrays as their values are equal.
-
-    Equality: keys and values are the same, but not necessarily in the same order of keys.
+    Equality means keys and values are the same, but not necessarily in the same order of keys.
     """
     sorted_a = dict(sorted(a.items()))
     sorted_b = dict(sorted(b.items()))
-    assert sorted_a.keys() == sorted_b.keys()
-    assert all([np.array_equal(r, e) for r, e in zip(sorted_a.values(), sorted_b.values())])
+    is_keys_equal = sorted_a.keys() == sorted_b.keys()
+    assert all(
+        [np.array_equal(left, right) for left, right in zip(sorted_a.values(), sorted_b.values())]
+        + [is_keys_equal],
+    )
 
 
-DictWithListValues: TypeAlias = dict[Any, list[Any]]
+DictWithListValues: TypeAlias = Mapping[Any, list[Any]]
 
 
 def assert_dict_with_list_equal_no_order(d1: DictWithListValues, d2: DictWithListValues) -> None:
