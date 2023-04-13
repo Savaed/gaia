@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, TypeAlias, TypedDict
+from typing import TypeAlias, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -98,7 +98,7 @@ Series: TypeAlias = npt.NDArray[np.float_]
 class TimeSeriesBase(TypedDict):
     """Minimum time series representation."""
 
-    id: Id
+    id: str
     time: Series
 
 
@@ -111,7 +111,7 @@ class PeriodicTimeSeries(TimeSeriesBase):
 class TimeSeries(TimeSeriesBase):
     """Basic time series for multiple observation periods"""
 
-    periods_mask: Iterable[str]
+    periods_mask: list[str]
 
 
 class KeplerTimeSeries(TimeSeries):
