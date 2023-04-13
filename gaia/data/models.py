@@ -65,8 +65,7 @@ class KeplerTCE(TCE):
     transit_depth: float
     _normalize_duration: bool = True
 
-    # TODO: add test for this
-    def __post_init__(self) -> None:  # pragma: no cover
+    def __post_init__(self) -> None:
         if self._normalize_duration:
             # TCE 'duration' for NASA tables is in hours
             self.duration = round(self.duration / 24, 4)
@@ -78,12 +77,11 @@ class KeplerTCE(TCE):
 
 @dataclass
 class StellarParameters:
-    """Physical properties of the target star, binary or multiple system."""
+    """Physical properties of the target star or binary/multiple system."""
 
     id: Id
 
 
-@dataclass
 class KeplerStellarParameters(StellarParameters):
     effective_temperature: float
     radius: float
