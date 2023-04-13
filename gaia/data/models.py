@@ -2,12 +2,13 @@ import abc
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias, TypedDict
+from uuid import UUID
 
 import numpy as np
 import numpy.typing as npt
 
 
-Id: TypeAlias = str | int
+Id: TypeAlias = str | int | UUID
 
 
 @dataclass
