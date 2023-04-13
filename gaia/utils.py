@@ -1,16 +1,8 @@
 import asyncio
-import codecs
 import functools
-import json
-import pickle
 import random
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeAlias, TypeVar
-
-import structlog
-
-
-log = structlog.stdlib.get_logger()
+from typing import ParamSpec, TypeAlias, TypeVar
 
 
 def check_kepid(kepid: int) -> None:
@@ -26,9 +18,6 @@ def check_kepid(kepid: int) -> None:
         raise ValueError(f"'kepid' must be in range 1 to 999 999 999 inclusive, but got {kepid=}")
 
 
-# HACK: To properly mark an Exception as an argument type, `Type[Exception]` is necessary,
-# but pyupgrade rewrites it as `type[Exception]`, which causes mypy error:
-# 'Value of type 'Type [type]' is not indexable [index]'
 Errors: TypeAlias = type[Exception] | tuple[type[Exception], ...]
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -62,52 +51,19 @@ def retry(
     def wrapper(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         @functools.wraps(fn)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
-            n = 0
+            errors_counter = 0
             while True:
                 try:
                     return await fn(*args, **kwargs)
-                except errors as ex:
-                    n += 1
-                    log.warning(ex)
-                    backoff = min((n**2) + random.random(), max_seconds)
+                except errors:
+                    errors_counter += 1
+                    backoff = min((errors_counter**2) + random.random(), max_seconds)
 
-                    if n > retries:
-                        log.error("Retries limit reached")
+                    if errors_counter > retries:
                         raise
 
-                    log.info(f"Retrying {n}/{retries}", backoff_seconds=round(backoff, 2))
                     await asyncio.sleep(backoff)
 
         return wrapped
 
     return wrapper
-
-
-class NumpyEncoder(json.JSONEncoder):
-    """Simple JSON encoder to serialize any object which contains numpy arrays."""
-
-    def default(self, obj: Any) -> dict[str, Any]:
-        return {
-            "_type": str(type(obj)),
-            "value": codecs.encode(pickle.dumps(obj), "base64").decode("latin1"),
-        }
-
-
-class NumpyDecoder(json.JSONDecoder):
-    """Simple JSON decoder to deserialize string into any object which contains numpy arrays."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(object_hook=self._object_hook, *args, **kwargs)
-
-    def _object_hook(self, obj: Any) -> Any:
-        if "_type" in obj:
-            return pickle.loads(codecs.decode(obj["value"].encode("latin1"), "base64"))
-        return obj
-
-
-def json_numpy_encode(obj: Any) -> str:
-    return json.dumps(obj, cls=NumpyEncoder)
-
-
-def json_numpy_decode(string: str) -> Any:
-    return json.loads(string, cls=NumpyDecoder)
