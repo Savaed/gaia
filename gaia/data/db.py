@@ -1,11 +1,18 @@
-import numbers
-from typing import Any, Protocol, Sequence, TypeAlias
+from collections import defaultdict
+from typing import Any, Generic, Protocol, TypeVar
 
 import duckdb
+import numpy as np
+
+from gaia.data.models import Id, Series, TimeSeries
 
 
-QueryParameters: TypeAlias = dict[str, Any] | list[numbers.Number | str]
-QueryResult: TypeAlias = dict[str, numbers.Number | bytes | str | Sequence[Any] | dict[Any, Any]]
+QueryParameters = dict[str, Any] | list[Any]
+QueryResult = dict[str, Any]
+
+
+class DataNotFoundError(Exception):
+    """Raised when the requested data was not found."""
 
 
 class DbContext(Protocol):
@@ -43,3 +50,73 @@ class DuckDbContext:
         db = duckdb.connect(self._db_source)
         result = db.execute(query, parameters).df()
         return result.to_dict("records")  # type: ignore
+
+
+TTimeSeries = TypeVar("TTimeSeries", bound=TimeSeries)
+
+
+class TimeSeriesRepository(Generic[TTimeSeries]):
+    """A database repository that provides basic time series operations."""
+
+    def __init__(self, db_context: DbContext, time_series_table: str) -> None:
+        self._db_context = db_context
+        self._table = time_series_table.strip()
+
+    def get(self, target_id: Id, periods: tuple[str, ...] | None = None) -> TTimeSeries:
+        """Retrieve time series for target and observation periods from the database.
+
+        The source table must contain at least the 'id', 'time' and 'period' columns.
+        The other columns should have the same names as the `TTimeSeries` keys except
+        'periods_mask' which is created based on the 'period' column.
+
+        Args:
+            target_id (Id): Target ID
+            periods (tuple[str, ...] | None, optional): The observation periods for which time
+                series should be returned. If None, the time series for all available periods will
+                be returned. Defaults to None.
+
+        Raises:
+            DataNotFoundError: The requested time series was not found
+            KeyError: `TTimeSeries` required key not found in db table
+
+        Returns:
+            TTimeSeries: Dictionary of time series. This ensures that all keys for `TTimeSeries`
+                are provided, but additional keys may be present.
+        """
+        periods = periods or ()
+        query = self._build_query_string(periods)
+        results = self._db_context.query(query, parameters=[str(target_id), *periods])
+
+        if not results:
+            periods_msg = f"{periods=}" if periods else "all periods"
+            raise DataNotFoundError(f"Time series for {target_id=} and {periods_msg} not found")
+
+        return self._construct_output(target_id, results)
+
+    def _construct_output(self, target_id: Id, results: list[QueryResult]) -> TTimeSeries:
+        series_base = TimeSeries(id=str(target_id), time=np.array([]), periods_mask=[])
+        tmp_remaining_series: dict[str, list[Series]] = defaultdict(list)
+
+        # We expect 'id', 'time' and 'period' to be in `result`
+        for result in results:
+            del result["id"]  # Not used, set before and remains the same for every result
+            current_periods_mask = [result.pop("period")] * len(result["time"])
+            series_base["periods_mask"].extend(current_periods_mask)
+            series_base["time"] = np.concatenate([series_base["time"], result["time"]])
+
+            # Set remaining time series
+            for field, series in result.items():
+                tmp_remaining_series[field].append(series)
+
+        remaining_series = {
+            key: np.concatenate(series) for key, series in tmp_remaining_series.items()
+        }
+        return series_base | remaining_series  # type: ignore
+
+    def _build_query_string(self, periods: tuple[str, ...]) -> str:
+        query = f"SELECT * FROM {self._table} WHERE id=?"
+
+        if periods:
+            query += f" AND period IN ({'?, ' * len(periods)})"
+
+        return query + ";"

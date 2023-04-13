@@ -1,7 +1,12 @@
+from unittest.mock import Mock
+
 import duckdb
+import numpy as np
 import pytest
 
-from gaia.data.db import DuckDbContext
+from gaia.data.db import DataNotFoundError, DbContext, DuckDbContext, TimeSeriesRepository
+from gaia.data.models import TimeSeries
+from tests.conftest import assert_dict_with_numpy_equal
 
 
 @pytest.fixture
@@ -17,7 +22,7 @@ def duckdb_context(mocker):
     ]
     db.executemany("INSERT INTO test_table VALUES(?, ?, ?, ?);", parameters=data)
     mocker.patch("gaia.data.db.duckdb.connect", return_value=db)
-    # Actually `db source` doesn't matter here because the db connection is a mock
+    # Actually `db source` doesn't matter here because the db connection is mocked anyway
     return DuckDbContext(db_source=":memory:")
 
 
@@ -72,6 +77,78 @@ def duckdb_context(mocker):
     ],
 )
 def test_query__simple_select(query, parameters, expected, duckdb_context):
-    """Test that simple SQL queries return correct data."""
+    """Test that simple SQL query returns correct data."""
     result = duckdb_context.query(query, parameters)
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    "target_id,periods,context_return_value,expected",
+    [
+        (
+            1,
+            None,
+            [
+                dict(id=1, period="period1", time=[1, 2, 3]),
+                dict(id=1, period="period2", time=[4, 5, 6]),
+            ],
+            TimeSeries(
+                id="1",
+                time=np.array([1, 2, 3, 4, 5, 6]),
+                periods_mask=["period1", "period1", "period1", "period2", "period2", "period2"],
+            ),
+        ),
+        (
+            1,
+            ("period1",),
+            [dict(id=1, period="period1", time=[1, 2, 3])],
+            TimeSeries(
+                id="1",
+                time=np.array([1, 2, 3]),
+                periods_mask=["period1", "period1", "period1"],
+            ),
+        ),
+        (
+            1,
+            ("period1", "period2"),
+            [
+                dict(id=1, period="period1", time=[1, 2, 3]),
+                dict(id=1, period="period2", time=[4, 5, 6]),
+            ],
+            TimeSeries(
+                id="1",
+                time=np.array([1, 2, 3, 4, 5, 6]),
+                periods_mask=["period1", "period1", "period1", "period2", "period2", "period2"],
+            ),
+        ),
+    ],
+    ids=["all_periods_by_default", "specific_period", "specific_periods"],
+)
+def test_time_series_repository_get__return_correct_series(
+    target_id,
+    periods,
+    context_return_value,
+    expected,
+):
+    """Test that correct data is returned."""
+    db_context = Mock(spec=DbContext, **{"query.return_value": context_return_value})
+    repo = TimeSeriesRepository[TimeSeries](db_context, "test_table")
+    result = repo.get(target_id=target_id, periods=periods)
+    assert_dict_with_numpy_equal(result, expected)
+
+
+def test_time_series_repository_get__time_series_not_found():
+    """Test that `DataNotFoundError` is raised when no requested time series was found."""
+    db_context = Mock(spec=DbContext, **{"query.return_value": []})
+    repo = TimeSeriesRepository[TimeSeries](db_context, "test_table")
+    with pytest.raises(DataNotFoundError):
+        repo.get(target_id=1)
+
+
+def test_time_series_repository_get__time_series_key_not_found_in_table():
+    """Test that `KeyError` is raised when no required time series key was found in db table."""
+    db_context = Mock(spec=DbContext)
+    db_context.query.return_value = [{"id": "1", "period": "1"}]  # No required 'time' key
+    repo = TimeSeriesRepository[TimeSeries](db_context, "test_table")
+    with pytest.raises(KeyError):
+        repo.get(target_id=1)
