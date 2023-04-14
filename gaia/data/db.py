@@ -1,5 +1,6 @@
 from collections import defaultdict
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeAlias, TypeVar
+from uuid import UUID
 
 import duckdb
 import numpy as np
@@ -7,8 +8,9 @@ import numpy as np
 from gaia.data.models import Id, Series, TimeSeries
 
 
-QueryParameters = dict[str, Any] | list[Any]
-QueryResult = dict[str, Any]
+_QueryParameter: TypeAlias = str | int | float | complex | UUID
+QueryParameters: TypeAlias = dict[str, _QueryParameter] | list[_QueryParameter]
+QueryResult: TypeAlias = dict[str, Any]
 
 
 class DataNotFoundError(Exception):
@@ -80,8 +82,8 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
             KeyError: `TTimeSeries` required key not found in db table
 
         Returns:
-            TTimeSeries: Dictionary of time series. This ensures that all keys for `TTimeSeries`
-                are provided, but additional keys may be present.
+            TTimeSeries: Dictionary of time series combined from all specified periods. This ensures
+                that all keys for `TTimeSeries` are present (all additional keys are ignored).
         """
         periods = periods or ()
         query = self._build_query_string(periods)
@@ -96,17 +98,19 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
     def _construct_output(self, target_id: Id, results: list[QueryResult]) -> TTimeSeries:
         series_base = TimeSeries(id=str(target_id), time=np.array([]), periods_mask=[])
         tmp_remaining_series: dict[str, list[Series]] = defaultdict(list)
+        required_keys = self.__orig_class__.__args__[0].__required_keys__  # type: ignore
 
         # We expect 'id', 'time' and 'period' to be in `result`
         for result in results:
             del result["id"]  # Not used, set before and remains the same for every result
             current_periods_mask = [result.pop("period")] * len(result["time"])
             series_base["periods_mask"].extend(current_periods_mask)
-            series_base["time"] = np.concatenate([series_base["time"], result["time"]])
+            series_base["time"] = np.concatenate([series_base["time"], result.pop("time")])
 
             # Set remaining time series
-            for field, series in result.items():
-                tmp_remaining_series[field].append(series)
+            for key, series in result.items():
+                if key in required_keys:
+                    tmp_remaining_series[key].append(series)
 
         remaining_series = {
             key: np.concatenate(series) for key, series in tmp_remaining_series.items()
