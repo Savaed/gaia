@@ -1,77 +1,94 @@
-from dataclasses import dataclass
-
 import pytest
 
-from gaia.data.models import FromDictMixin
+from gaia.data.models import TCE, KeplerTCE, PeriodicEvent, TceLabel
 
 
-@dataclass
-class FromDictTestClass(FromDictMixin):
-    a: int
-    b: int
-    c: int
-
-
-def test_from_dict__class_is_not_dataclass():
-    """Test that TypeError is raised when `from_dict()` is call on non dataclass."""
-
-    class _FromDictTestClass(FromDictMixin):
-        a: int
-
-    with pytest.raises(TypeError):
-        _FromDictTestClass.from_flat_dict({"a": 1, "b": 2})
-
-
-@pytest.mark.parametrize(
-    "data,mapping",
-    [
-        ({"a": 1, "b": 2, "d": 3}, None),
-        ({"A": 1, "B": 2, "C": 3}, {"A": "a", "B": "b"}),
-    ],
-    ids=["no_mapping", "invalid_mapping"],
-)
-def test_from_dict__missing_data(data, mapping):
-    """Test that KeyError is raised when some fields are missing in the dictionary data."""
-    with pytest.raises(KeyError):
-        FromDictTestClass.from_flat_dict(data, mapping=mapping)
+def test_tce_event__return_correct_value():
+    """Test that ."""
+    epoch = 1.1
+    period = 2.2
+    duration = 24
+    tce = TCE(
+        tce_id=1,
+        target_id=1,
+        name="tce",
+        label_text=None,
+        epoch=epoch,
+        period=period,
+        duration=duration,
+    )
+    expected = PeriodicEvent(epoch=epoch, duration=duration, period=period)
+    assert tce.event == expected
 
 
 @pytest.mark.parametrize(
-    "data,expected",
+    "normalize,duration,expected",
     [
-        ({"a": 1, "b": 2, "c": 3}, FromDictTestClass(a=1, b=2, c=3)),
-        ({"a": 1, "b": 2, "c": 3, "d": 4}, FromDictTestClass(a=1, b=2, c=3)),
+        (True, 24, 1),
+        (False, 24, 24),
     ],
-    ids=["standard", "additional_keys"],
+    ids=[
+        "normalize",
+        "dont_normalize",
+    ],
 )
-def test_from_dict__return_correct_data_without_mappping(data, expected):
-    """Test that properly mapped object is returned without dictionary keys mapping."""
-    result = FromDictTestClass.from_flat_dict(data)
-    assert result == expected
+def test_kepler_tce_post_init__normalize_duration(normalize, duration, expected):
+    """Test that transit duration for TCE is normalized when required."""
+    tce = KeplerTCE(
+        tce_id=1,
+        target_id=1,
+        name="tce",
+        label_text=None,
+        epoch=1.2,
+        period=1.2,
+        opt_ghost_core_aperture_corr=1.2,
+        opt_ghost_halo_aperture_corr=1.2,
+        bootstrap_false_alarm_proba=1.2,
+        rolling_band_fgt=1.2,
+        radius=1.2,
+        fitted_period=1.2,
+        transit_depth=1.2,
+        duration=duration,
+        _normalize_duration=normalize,
+    )
+
+    assert tce.duration == expected
 
 
 @pytest.mark.parametrize(
-    "data,mapping,expected",
+    "label_text,expected",
     [
-        (
-            {"A": 1, "B": 2, "C": 3},
-            {"A": "a", "B": "b", "C": "c"},
-            FromDictTestClass(a=1, b=2, c=3),
-        ),
-        (
-            {"A": 1, "B": 2, "C": 3, "D": 4},
-            {"A": "a", "B": "b", "C": "c", "D": "d"},
-            FromDictTestClass(a=1, b=2, c=3),
-        ),
-        (
-            {"A": 1, "B": 2, "C": 3},
-            {"A": "a", "B": "b", "C": "c", "D": "d"},
-            FromDictTestClass(a=1, b=2, c=3),
-        ),
+        (None, TceLabel.UNKNOWN),
+        ("", TceLabel.UNKNOWN),
+        ("invalid_label", TceLabel.UNKNOWN),
+        ("PC", TceLabel.PC),
+        ("PLANET_CANDIDATE", TceLabel.PC),
     ],
-    ids=["standard", "additional_keys", "additional_mapping"],
+    ids=[
+        "from_None",
+        "from_empty_string",
+        "from_invalid_label",
+        "from_enum_name",
+        "from_enum_value",
+    ],
 )
-def test_from_dict__return_correct_data_with_mappping(data, mapping, expected):
-    """Test that properly mapped object is returned with dictionary keys mapping."""
-    result = FromDictTestClass.from_flat_dict(data, mapping=mapping)
-    assert result == expected
+def test_kepler_tce_label__return_correct_value(label_text, expected):
+    """Test that label is correctly determined based on its text representation."""
+    tce = KeplerTCE(
+        tce_id=1,
+        target_id=1,
+        name="tce",
+        label_text=label_text,
+        epoch=1.2,
+        period=1.2,
+        opt_ghost_core_aperture_corr=1.2,
+        opt_ghost_halo_aperture_corr=1.2,
+        bootstrap_false_alarm_proba=1.2,
+        rolling_band_fgt=1.2,
+        radius=1.2,
+        fitted_period=1.2,
+        transit_depth=1.2,
+        duration=12,
+    )
+
+    assert tce.label == expected

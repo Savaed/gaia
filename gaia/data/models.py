@@ -42,16 +42,39 @@ class TCE(abc.ABC):
 
     tce_id: Id
     target_id: Id
-    name: str | None
-    label: TceLabel | None
     epoch: float
     duration: float
     period: float
+    name: str | None
+    label_text: str | None
+    """Should be `TceLabel.name|value`.
+
+    The main purpose of this field is to facilitate the initialization of `TCE` from files and
+    databases where TCE labels are stored mostly as plain text, not an enum. For all other uses,
+    use the `TCE.label` property.
+    """
 
     @property
-    @abc.abstractmethod
+    def label(self) -> TceLabel:
+        """A label that identifies whether a TCE is a planet candidate (PC) or not.
+
+        This is derived from `TCE.label_text`. If `TCE.label_text` is not a valid
+        `TceLabel.name|value` or is None or an empty string, this returns `TceLabel.UNKNOWN`.
+        """
+        if not self.label_text:
+            return TceLabel.UNKNOWN
+
+        try:
+            return TceLabel(self.label_text)
+        except ValueError:
+            try:
+                return TceLabel[self.label_text]
+            except KeyError:
+                return TceLabel.UNKNOWN
+
+    @property
     def event(self) -> PeriodicEvent:
-        ...
+        return PeriodicEvent(self.epoch, self.duration, self.period)
 
 
 @dataclass
@@ -69,10 +92,6 @@ class KeplerTCE(TCE):
         if self._normalize_duration:
             # TCE 'duration' for NASA tables is in hours
             self.duration = round(self.duration / 24, 4)
-
-    @property
-    def event(self) -> PeriodicEvent:
-        return PeriodicEvent(self.epoch, self.duration, self.period)
 
 
 @dataclass
