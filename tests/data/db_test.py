@@ -8,6 +8,7 @@ import pytest
 from gaia.data.db import (
     DataNotFoundError,
     DbContext,
+    DbRepositoryError,
     DuckDbContext,
     MissingColumnError,
     MissingTableError,
@@ -165,6 +166,24 @@ def test_time_series_repository_get__return_correct_series(
     assert_dict_with_numpy_equal(result, expected)
 
 
+def test_time_series_repository_get___missing_table():
+    """Test that `DbRepositoryError` is raised when no time series table was found."""
+    error = "missing_table"
+    db_context = Mock(spec=DbContext, **{"query.side_effect": MissingTableError(error)})
+    repo = TimeSeriesRepository[TimeSeriesTest](db_context, "test_table")
+    with pytest.raises(DbRepositoryError, match=error):
+        repo.get(target_id=1)
+
+
+def test_time_series_repository_get___missing_column():
+    """Test that `DbRepositoryError` is raised when no column specified in the query was found."""
+    error = "missing_column"
+    db_context = Mock(spec=DbContext, **{"query.side_effect": MissingColumnError(error)})
+    repo = TimeSeriesRepository[TimeSeriesTest](db_context, "test_table")
+    with pytest.raises(DbRepositoryError, match=error):
+        repo.get(target_id=1)
+
+
 def test_time_series_repository_get__time_series_not_found():
     """Test that `DataNotFoundError` is raised when no requested time series was found."""
     db_context = Mock(spec=DbContext, **{"query.return_value": []})
@@ -174,11 +193,11 @@ def test_time_series_repository_get__time_series_not_found():
 
 
 def test_time_series_repository_get__time_series_key_not_found_in_table():
-    """Test that `KeyError` is raised when no required time series key was found in db table."""
+    """Test that `DbRepositoryError` is raised when time series key was not found in the table."""
     db_context = Mock(spec=DbContext)
-    db_context.query.return_value = [{"id": "1", "period": "period1"}]  # No required 'time' key
+    db_context.query.return_value = [{"id": "1"}]  # No required 'time' and 'period' keys
     repo = TimeSeriesRepository[TimeSeries](db_context, "test_table")
-    with pytest.raises(KeyError):
+    with pytest.raises(DbRepositoryError):
         repo.get(target_id=1)
 
 

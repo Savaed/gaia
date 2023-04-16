@@ -33,6 +33,10 @@ class MissingColumnError(Exception):
     column: str
 
 
+class DbRepositoryError(Exception):
+    """Raised when there is an error in the database repository."""
+
+
 class DbContext(Protocol):
     def query(self, query: str, parameters: QueryParameters | None = None) -> list[QueryResult]:
         ...
@@ -109,7 +113,8 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
 
         Raises:
             DataNotFoundError: The requested time series was not found
-            KeyError: `TTimeSeries` required key not found in db table
+            DbRepositoryError: `TTimeSeries` required keys not found in table OR database table not
+                found OR one of required columns 'id', 'time' and 'period' not found in the table
 
         Returns:
             TTimeSeries: Dictionary of time series combined for all specified periods. It is
@@ -117,7 +122,10 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
         """
         periods = periods or ()
         query = self._build_query_string(periods)
-        results = self._db_context.query(query, parameters=[str(target_id), *periods])
+        try:
+            results = self._db_context.query(query, parameters=[str(target_id), *periods])
+        except (MissingTableError, MissingColumnError) as ex:
+            raise DbRepositoryError(ex)
 
         if not results:
             periods_msg = f"{periods=}" if periods else "all periods"
@@ -128,10 +136,19 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
     def _construct_output(self, target_id: Id, results: list[QueryResult]) -> TTimeSeries:
         series_base = TimeSeries(id=str(target_id), time=np.array([]), periods_mask=[])
         tmp_remaining_series: dict[str, list[Series]] = defaultdict(list)
-        required_keys = self.__orig_class__.__args__[0].__required_keys__  # type: ignore
+        required_keys: frozenset[str] = self.__orig_class__.__args__[0].__required_keys__  # type: ignore # noqa
 
-        # We expect 'id', 'time' and 'period' to be in `result`
         for result in results:
+            # 'periods_mask' is obtained from 'period' key of each periodic time series
+            missing_required_keys = (
+                (set(required_keys) | {"period"}) - {"periods_mask"} - set(result)
+            )
+            if missing_required_keys:
+                raise DbRepositoryError(
+                    f"Required keys: '{', '.join(missing_required_keys)}' not found in db results",
+                )
+
+            # We expect at least 'id', 'time' and 'period' to be in `result`
             del result["id"]  # Not used, set before and remains the same for every result
             current_periods_mask = [result.pop("period")] * len(result["time"])
             series_base["periods_mask"].extend(current_periods_mask)
