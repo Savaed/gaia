@@ -1,11 +1,12 @@
 from collections import defaultdict
+from dataclasses import fields
 from typing import Any, Generic, Protocol, TypeAlias, TypeVar
 from uuid import UUID
 
 import duckdb
 import numpy as np
 
-from gaia.data.models import Id, Series, TimeSeries
+from gaia.data.models import Id, Series, StellarParameters, TimeSeries
 
 
 _QueryParameter: TypeAlias = str | int | float | complex | UUID
@@ -65,7 +66,7 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
         self._table = time_series_table.strip()
 
     def get(self, target_id: Id, periods: tuple[str, ...] | None = None) -> TTimeSeries:
-        """Retrieve time series for target and observation periods from the database.
+        """Retrieve time series for target star or binary/multiple system.
 
         The source table must contain at least the 'id', 'time' and 'period' columns.
         The other columns should have the same names as the `TTimeSeries` keys except
@@ -124,3 +125,36 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
             query += f" AND period IN ({'?, ' * len(periods)})"
 
         return query + ";"
+
+
+TStellarParameters = TypeVar("TStellarParameters", bound=StellarParameters)
+
+
+class StellarParametersRepository(Generic[TStellarParameters]):
+    """A database repository that provides basic stellar parameters operations."""
+
+    def __init__(self, db_context: DbContext, table_name: str) -> None:
+        self._db_context = db_context
+        self._table = table_name
+
+    def get(self, id: Id) -> TStellarParameters:
+        """Retrieve physical parameters for the target star or binary/multiple system.
+
+        Arguments:
+            id (Id): Target ID
+
+        Insteps:
+            DataNotFoundError: The requested stellar parameters was not found
+
+        Returns:
+            TStellarParameters: The stellar physical properties of the target star or system
+        """
+        generic_type: type[TStellarParameters] = self.__orig_class__.__args__[0]  # type: ignore
+        result = self._db_context.query(f"SELECT * FROM {self._table} WHERE id=?;", [id])
+
+        if not result:
+            raise DataNotFoundError(f"Stellar parameters for {id=} not found")
+
+        params_init_keys = [field.name for field in fields(generic_type) if field.init]
+        params_init_kwargs = {k: v for k, v in result[0].items() if k in params_init_keys}
+        return generic_type(**params_init_kwargs)

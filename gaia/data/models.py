@@ -101,6 +101,7 @@ class StellarParameters:
     id: Id
 
 
+@dataclass
 class KeplerStellarParameters(StellarParameters):
     effective_temperature: float
     radius: float

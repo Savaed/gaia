@@ -1,11 +1,18 @@
+from dataclasses import dataclass
 from unittest.mock import Mock
 
 import duckdb
 import numpy as np
 import pytest
 
-from gaia.data.db import DataNotFoundError, DbContext, DuckDbContext, TimeSeriesRepository
-from gaia.data.models import Series, TimeSeries
+from gaia.data.db import (
+    DataNotFoundError,
+    DbContext,
+    DuckDbContext,
+    StellarParametersRepository,
+    TimeSeriesRepository,
+)
+from gaia.data.models import Series, StellarParameters, TimeSeries
 from tests.conftest import assert_dict_with_numpy_equal
 
 
@@ -176,3 +183,28 @@ def test_time_series_repository_get__ignore_optional_keys():
     )
     result = repo.get(target_id=1)
     assert_dict_with_numpy_equal(result, expected)
+
+
+@dataclass
+class StellarParametersTesting(StellarParameters):
+    name: str
+
+
+def test_stellar_parameters_repository_get__data_not_found():
+    """
+    Test that `DataNotFoundError` is raised when stellar parameters object for specified id was not
+    found.
+    """
+    db_context = Mock(spec=DbContext, **{"query.return_value": []})
+    repo = StellarParametersRepository[StellarParametersTesting](db_context, "test")
+    with pytest.raises(DataNotFoundError):
+        repo.get(1)
+
+
+def test_stellar_parameters_repository_get__return_correct_data():
+    """Test that correct stellar parameters object is returned."""
+    db_context = Mock(spec=DbContext, **{"query.return_value": [dict(id=1, name="test")]})
+    expected = StellarParametersTesting(id=1, name="test")
+    repo = StellarParametersRepository[StellarParametersTesting](db_context, "test")
+    result = repo.get(1)
+    assert result == expected
