@@ -1,5 +1,6 @@
+import re
 from collections import defaultdict
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Any, Generic, Protocol, TypeAlias, TypeVar
 from uuid import UUID
 
@@ -16,6 +17,20 @@ QueryResult: TypeAlias = dict[str, Any]
 
 class DataNotFoundError(Exception):
     """Raised when the requested data was not found."""
+
+
+@dataclass
+class MissingTableError(Exception):
+    """Raised when the table does not exist in the database."""
+
+    table: str
+
+
+@dataclass
+class MissingColumnError(Exception):
+    """Raised when the column does not exist in the database table."""
+
+    column: str
 
 
 class DbContext(Protocol):
@@ -47,11 +62,25 @@ class DuckDbContext:
                 placeholders it should be a dictionary. If the query is raw (has no placeholders),
                 it should be `None` or an empty dictionary. Defaults to None.
 
+        Raises:
+            MissingTableError: The table was not found on the database
+            MissingColumnError: The column was not found in the table
+
         Returns:
             list[QueryResult]: List of the resulting records, which may be empty
         """
         db = duckdb.connect(self._db_source)
-        result = db.execute(query, parameters).df()
+        try:
+            result = db.execute(query, parameters).df()
+        except duckdb.BinderException as ex:
+            if "column" in str(ex):
+                column = re.search(r'(?<=column )"\w*', str(ex)).group()  # type: ignore
+                raise MissingColumnError(column)
+            raise
+        except duckdb.CatalogException as ex:
+            table = re.search(r"(?<=with name )\w*", str(ex)).group()  # type: ignore
+            raise MissingTableError(table)
+
         return result.to_dict("records")  # type: ignore
 
 

@@ -9,6 +9,8 @@ from gaia.data.db import (
     DataNotFoundError,
     DbContext,
     DuckDbContext,
+    MissingColumnError,
+    MissingTableError,
     StellarParametersRepository,
     TimeSeriesRepository,
 )
@@ -87,6 +89,18 @@ def test_query__simple_select_with_parameters(query, parameters, expected, duckd
     """Test that simple SQL query returns correct data using prepared statements."""
     result = duckdb_context.query(query, parameters)
     assert result == expected
+
+
+def test_query__table_not_found(duckdb_context):
+    """Test that `MissingTableError` is raised when table was not found."""
+    with pytest.raises(MissingTableError):
+        duckdb_context.query("SELECT * FROM not_existent_table;")
+
+
+def test_query__column_not_found(duckdb_context):
+    """Test that `MissingColumnError` is raised when column was not found."""
+    with pytest.raises(MissingColumnError):
+        duckdb_context.query("SELECT not_existent_column FROM test_table;")
 
 
 class TimeSeriesTest(TimeSeries):
