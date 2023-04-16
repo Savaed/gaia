@@ -61,9 +61,9 @@ TTimeSeries = TypeVar("TTimeSeries", bound=TimeSeries)
 class TimeSeriesRepository(Generic[TTimeSeries]):
     """A database repository that provides basic time series operations."""
 
-    def __init__(self, db_context: DbContext, time_series_table: str) -> None:
+    def __init__(self, db_context: DbContext, table: str) -> None:
         self._db_context = db_context
-        self._table = time_series_table.strip()
+        self._table = table.strip()
 
     def get(self, target_id: Id, periods: tuple[str, ...] | None = None) -> TTimeSeries:
         """Retrieve time series for target star or binary/multiple system.
@@ -133,12 +133,15 @@ TStellarParameters = TypeVar("TStellarParameters", bound=StellarParameters)
 class StellarParametersRepository(Generic[TStellarParameters]):
     """A database repository that provides basic stellar parameters operations."""
 
-    def __init__(self, db_context: DbContext, table_name: str) -> None:
+    def __init__(self, db_context: DbContext, table: str) -> None:
         self._db_context = db_context
-        self._table = table_name
+        self._table = table
 
     def get(self, id: Id) -> TStellarParameters:
         """Retrieve physical parameters for the target star or binary/multiple system.
+
+        The source table must contain at least the 'id' column. The other columns should have the
+        same names as the `TStellarParameters` fields.
 
         Arguments:
             id (Id): Target ID
