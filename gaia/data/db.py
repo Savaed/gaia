@@ -99,21 +99,21 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
 
         The source table must contain at least the 'id', 'time' and 'period' columns.
         The other columns should have the same names as the `TTimeSeries` keys except
-        'periods_mask' which is created based on the 'period' column.
+        'periods_mask' which is created based on the 'period' column(s).
 
         Args:
             target_id (Id): Target ID
             periods (tuple[str, ...] | None, optional): The observation periods for which time
-                series should be returned. If None, the time series for all available periods will
-                be returned. Defaults to None.
+                series should be returned. If None or empty tuple, the time series for all available
+                periods will be returned. Defaults to None.
 
         Raises:
             DataNotFoundError: The requested time series was not found
             KeyError: `TTimeSeries` required key not found in db table
 
         Returns:
-            TTimeSeries: Dictionary of time series combined from all specified periods. This ensures
-                that all keys for `TTimeSeries` are present (all additional keys are ignored).
+            TTimeSeries: Dictionary of time series combined for all specified periods. It is
+                guaranteed that all keys for `TTimeSeries` are present (other keys are ignored).
         """
         periods = periods or ()
         query = self._build_query_string(periods)
@@ -175,7 +175,7 @@ class StellarParametersRepository(Generic[TStellarParameters]):
         Arguments:
             id (Id): Target ID
 
-        Insteps:
+        Raises:
             DataNotFoundError: The requested stellar parameters was not found
 
         Returns:
