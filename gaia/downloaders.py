@@ -4,8 +4,8 @@ e.g. NASA data tables or Kepler light curves.
 
 Downloading from NASA's official REST API and MAST archive is supported.
 For more information on what you can download, see:
-   https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html - NASA
-   https://archive.stsci.edu/missions-and-data/kepler/kepler-bulk-downloads - MAST
+    https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html - NASA
+    https://archive.stsci.edu/missions-and-data/kepler/kepler-bulk-downloads - MAST
 """
 
 import asyncio
