@@ -145,7 +145,7 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
             )
             if missing_required_keys:
                 raise DbRepositoryError(
-                    f"Required keys: '{', '.join(missing_required_keys)}' not found in db results",
+                    f"Required keys: '{', '.join(missing_required_keys)}' are missing in db result",
                 )
 
             # We expect at least 'id', 'time' and 'period' to be in `result`
@@ -184,7 +184,7 @@ class StellarParametersRepository(Generic[TStellarParameters]):
         self._table = table
 
     def get(self, id: Id) -> TStellarParameters:
-        """Retrieve physical parameters for the target star or binary/multiple system.
+        """Retrieve physical properties for the target star or binary/multiple system.
 
         The source table must contain at least the 'id' column. The other columns should have the
         same names as the `TStellarParameters` fields.
@@ -194,16 +194,30 @@ class StellarParametersRepository(Generic[TStellarParameters]):
 
         Raises:
             DataNotFoundError: The requested stellar parameters was not found
+            DbRepositoryError: `TStellarParameters` initialize arguments not found in table
+                OR database table not found
 
         Returns:
             TStellarParameters: The stellar physical properties of the target star or system
         """
         generic_type: type[TStellarParameters] = self.__orig_class__.__args__[0]  # type: ignore
-        result = self._db_context.query(f"SELECT * FROM {self._table} WHERE id=?;", [id])
+        try:
+            result = self._db_context.query(f"SELECT * FROM {self._table} WHERE id=?;", [id])
+        except (MissingTableError, MissingColumnError) as ex:
+            raise DbRepositoryError(ex)
 
         if not result:
             raise DataNotFoundError(f"Stellar parameters for {id=} not found")
 
-        params_init_keys = [field.name for field in fields(generic_type) if field.init]
-        params_init_kwargs = {k: v for k, v in result[0].items() if k in params_init_keys}
-        return generic_type(**params_init_kwargs)
+        stellar_init_keys = [field.name for field in fields(generic_type) if field.init]
+        stellar_init_kwargs = {k: v for k, v in result[0].items() if k in stellar_init_keys}
+        missing_keys = set(stellar_init_keys) - set(stellar_init_kwargs)
+
+        if missing_keys:
+            raise DbRepositoryError(
+                f"Cannot initialie object of type {generic_type}. Initialize arguments="
+                f"'{', '.join(missing_keys)}' not found in the database result retreived from "
+                f"table={self._table}",
+            )
+
+        return generic_type(**stellar_init_kwargs)

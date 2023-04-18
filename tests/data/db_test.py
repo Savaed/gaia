@@ -105,7 +105,7 @@ def test_query__column_not_found(duckdb_context):
 
 
 class TimeSeriesTest(TimeSeries):
-    new_key: Series
+    series_values: Series
 
 
 @pytest.mark.parametrize(
@@ -115,43 +115,62 @@ class TimeSeriesTest(TimeSeries):
             1,
             None,
             [
-                dict(id=1, period="period1", time=[1, 2, 3], new_key=[1, 2, 3]),
-                dict(id=1, period="period2", time=[4, 5, 6], new_key=[4, 5, 6]),
+                dict(id=1, period="period1", time=[1, 2, 3], series_values=[1, 2, 3]),
+                dict(id=1, period="period2", time=[4, 5, 6], series_values=[4, 5, 6]),
             ],
             TimeSeriesTest(
                 id="1",
                 time=np.array([1, 2, 3, 4, 5, 6]),
                 periods_mask=["period1", "period1", "period1", "period2", "period2", "period2"],
-                new_key=np.array([1, 2, 3, 4, 5, 6]),
+                series_values=np.array([1, 2, 3, 4, 5, 6]),
             ),
         ),
         (
             1,
             ("period1",),
-            [dict(id=1, period="period1", time=[1, 2, 3], new_key=[1, 2, 3])],
+            [dict(id=1, period="period1", time=[1, 2, 3], series_values=[1, 2, 3])],
             TimeSeriesTest(
                 id="1",
                 time=np.array([1, 2, 3]),
                 periods_mask=["period1", "period1", "period1"],
-                new_key=np.array([1, 2, 3]),
+                series_values=np.array([1, 2, 3]),
             ),
         ),
         (
             1,
             ("period1", "period2"),
             [
-                dict(id=1, period="period1", time=[1, 2, 3], new_key=[1, 2, 3]),
-                dict(id=1, period="period2", time=[4, 5, 6], new_key=[4, 5, 6]),
+                dict(id=1, period="period1", time=[1, 2, 3], series_values=[1, 2, 3]),
+                dict(id=1, period="period2", time=[4, 5, 6], series_values=[4, 5, 6]),
             ],
             TimeSeriesTest(
                 id="1",
                 time=np.array([1, 2, 3, 4, 5, 6]),
                 periods_mask=["period1", "period1", "period1", "period2", "period2", "period2"],
-                new_key=np.array([1, 2, 3, 4, 5, 6]),
+                series_values=np.array([1, 2, 3, 4, 5, 6]),
+            ),
+        ),
+        (
+            1,
+            ("period1",),
+            [
+                dict(
+                    id=1,
+                    period="period1",
+                    time=[1, 2, 3],
+                    series_values=[1, 2, 3],
+                    additional_key=[1, 2, 3],
+                ),
+            ],
+            TimeSeriesTest(
+                id="1",
+                time=np.array([1, 2, 3]),
+                periods_mask=["period1", "period1", "period1"],
+                series_values=np.array([1, 2, 3]),
             ),
         ),
     ],
-    ids=["all_periods_by_default", "specific_period", "specific_periods"],
+    ids=["all_periods_by_default", "specific_period", "specific_periods", "ignore_additional_keys"],
 )
 def test_time_series_repository_get__return_correct_series(
     target_id,
@@ -166,7 +185,7 @@ def test_time_series_repository_get__return_correct_series(
     assert_dict_with_numpy_equal(result, expected)
 
 
-def test_time_series_repository_get___missing_table():
+def test_time_series_repository_get__missing_table():
     """Test that `DbRepositoryError` is raised when no time series table was found."""
     error = "missing_table"
     db_context = Mock(spec=DbContext, **{"query.side_effect": MissingTableError(error)})
@@ -175,7 +194,7 @@ def test_time_series_repository_get___missing_table():
         repo.get(target_id=1)
 
 
-def test_time_series_repository_get___missing_column():
+def test_time_series_repository_get__missing_column():
     """Test that `DbRepositoryError` is raised when no column specified in the query was found."""
     error = "missing_column"
     db_context = Mock(spec=DbContext, **{"query.side_effect": MissingColumnError(error)})
@@ -201,43 +220,55 @@ def test_time_series_repository_get__time_series_key_not_found_in_table():
         repo.get(target_id=1)
 
 
-def test_time_series_repository_get__ignore_optional_keys():
-    """Test that ."""
-    db_context = Mock(spec=DbContext)
-    # `db_context` returns additional key 'additional_key'
-    db_context.query.return_value = [
-        {"id": "1", "period": "period1", "time": [1, 2, 3], "additional_key": 1.2},
-    ]
-    repo = TimeSeriesRepository[TimeSeries](db_context, "test_table")
-    expected = TimeSeries(
-        id="1",
-        time=np.array([1, 2, 3]),
-        periods_mask=["period1", "period1", "period1"],
-    )
-    result = repo.get(target_id=1)
-    assert_dict_with_numpy_equal(result, expected)
-
-
 @dataclass
 class StellarParametersTesting(StellarParameters):
-    name: str
+    ...
+
+
+@pytest.mark.parametrize(
+    "error",
+    [MissingTableError("missing_table"), MissingColumnError("missing_column")],
+    ids=["missing_table", "missing_column"],
+)
+def test_stellar_parameters_repository_get__db_context_error(error):
+    """Test that `DbRepositoryError` is raised when no required table or column was found."""
+    db_context = Mock(spec=DbContext, **{"query.side_effect": error})
+    repo = StellarParametersRepository[StellarParametersTesting](db_context, "test")
+    with pytest.raises(DbRepositoryError):
+        repo.get(1)
 
 
 def test_stellar_parameters_repository_get__data_not_found():
-    """
-    Test that `DataNotFoundError` is raised when stellar parameters object for specified id was not
-    found.
-    """
+    """Test that `DataNotFoundError` is raised when stellar parameters was notfound."""
     db_context = Mock(spec=DbContext, **{"query.return_value": []})
     repo = StellarParametersRepository[StellarParametersTesting](db_context, "test")
     with pytest.raises(DataNotFoundError):
         repo.get(1)
 
 
-def test_stellar_parameters_repository_get__return_correct_data():
-    """Test that correct stellar parameters object is returned."""
-    db_context = Mock(spec=DbContext, **{"query.return_value": [dict(id=1, name="test")]})
-    expected = StellarParametersTesting(id=1, name="test")
+def test_stellar_parameters_repository_get__missing_init_arguments():
+    """
+    Test that `DbRepositoryError` is raised when no `TStellarParameters` initialize arguments
+    was found in db result dictionary.
+    """
+    db_context = Mock(spec=DbContext)
+    db_context.query.return_value = [{"other_key": "abc"}]  # Missing required 'id' key
     repo = StellarParametersRepository[StellarParametersTesting](db_context, "test")
-    result = repo.get(1)
+    with pytest.raises(DbRepositoryError):
+        repo.get(1)
+
+
+@pytest.mark.parametrize(
+    "id,db_result,expected",
+    [
+        (1, {"id": 1}, StellarParametersTesting(id=1)),
+        (1, {"id": 1, "additional_key": "abc"}, StellarParametersTesting(id=1)),
+    ],
+    ids=["normal", "ignore_additional_keys"],
+)
+def test_stellar_parameters_repository_get__return_correct_data(id, db_result, expected):
+    """Test that correct stellar parameters object is returned."""
+    db_context = Mock(spec=DbContext, **{"query.return_value": [db_result]})
+    repo = StellarParametersRepository[StellarParametersTesting](db_context, "test")
+    result = repo.get(id)
     assert result == expected
