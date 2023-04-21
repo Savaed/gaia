@@ -366,7 +366,7 @@ def test_tce_repository_get_by_id__missing_tce_init_arguments(
 def tces(request):
     """Return database result (from `DbContext.query()`) and correct TCE."""
     tce = dict(
-        tce_id=1,
+        id=1,
         target_id=1,
         epoch=1.2,
         duration=3.4,
@@ -512,7 +512,7 @@ def test_tce_repository_events__db_context_error(db_context_erroneous, tce_repo)
     [
         ([], []),
         (
-            [{"target_id": 1, "tce_id": 2, "epoch": 1.2, "period": 3.4, "duration": 5.6}],
+            [{"target_id": 1, "id": 2, "epoch": 1.2, "period": 3.4, "duration": 5.6}],
             [(1, 2, PeriodicEvent(epoch=1.2, duration=5.6, period=3.4))],
         ),
     ],
