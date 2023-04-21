@@ -93,7 +93,12 @@ TTimeSeries = TypeVar("TTimeSeries", bound=TimeSeries)
 
 
 class TimeSeriesRepository(Generic[TTimeSeries]):
-    """A database repository that provides basic time series operations."""
+    """A database repository that provides basic time series operations.
+
+    The source table must contain at least the 'id', 'time' and 'period' columns. The other columns
+    should have the same names as the `TTimeSeries` keys except 'periods_mask' which is created
+    based on the 'period' column(s).
+    """
 
     def __init__(self, db_context: DbContext, table: str) -> None:
         self._db_context = db_context
@@ -101,10 +106,6 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
 
     def get(self, target_id: Id, periods: tuple[str, ...] | None = None) -> TTimeSeries:
         """Retrieve time series for target star or binary/multiple system.
-
-        The source table must contain at least the 'id', 'time' and 'period' columns.
-        The other columns should have the same names as the `TTimeSeries` keys except
-        'periods_mask' which is created based on the 'period' column(s).
 
         Args:
             target_id (Id): Target ID
@@ -178,7 +179,12 @@ TStellarParameters = TypeVar("TStellarParameters", bound=StellarParameters)
 
 
 class StellarParametersRepository(Generic[TStellarParameters]):
-    """A database repository that provides basic stellar parameters operations."""
+    """A database repository that provides basic stellar parameters operations.
+
+    The source table columns MUST match the `TStellarParameters` fields (name and type).
+    All unmatched columns will be ignored when converting the database result to
+    `TStellarParameters` objects.
+    """
 
     def __init__(self, db_context: DbContext, table: str) -> None:
         self._db_context = db_context
@@ -186,9 +192,6 @@ class StellarParametersRepository(Generic[TStellarParameters]):
 
     def get(self, id: Id) -> TStellarParameters:
         """Retrieve physical properties for the target star or binary/multiple system.
-
-        The source table must contain at least the 'id' column. The other columns should have the
-        same names as the `TStellarParameters` fields.
 
         Arguments:
             id (Id): Target ID
