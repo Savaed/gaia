@@ -44,7 +44,8 @@ def read_fits(
         data_header (str | int): HDU extension for data. If `int` then it is zero-indexed
         columns (Columns | None, optional): Data columns/fields to read. If None then all columns
             will be read. If empty sequence then no data will be returned. Defaults to None.
-        meta (Columns | None, optional): Metadata columns/fields to read. Defaults to None.
+        meta (Columns | None, optional): Metadata columns/fields to read. If None then all columns
+            will be read. If empty sequence then no data will be returned. Defaults to None.
 
     Raises:
         KeyError: Invalid data extension OR invalid data/metadata column
@@ -55,9 +56,9 @@ def read_fits(
     """
     metadata = {}
 
-    if meta:
-        header = fits.getheader(filepath)
-        metadata = {column: header[column] for column in meta}
+    if meta or meta is None:
+        header = dict(fits.getheader(filepath))
+        metadata = {column: header[column] for column in meta or header}
 
     if columns is not None and len(columns) == 0:
         return metadata
