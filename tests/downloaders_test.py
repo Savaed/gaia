@@ -199,7 +199,7 @@ def disable_retry_sleep(mocker):
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("disable_retry_sleep")
-async def test_download_time_series__retrying_failed_requests(mocker, downloader):
+async def test_download_time_series__retry_failed_requests(mocker, downloader):
     """
     Test that the method doesn't break when a single download fails but the download is retry the
     specified number of times.
@@ -222,7 +222,7 @@ async def test_download_time_series__retrying_failed_requests(mocker, downloader
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("disable_retry_sleep")
-async def test_download_time_seris__raise_when_ratries_limit_reached(mocker, downloader):
+async def test_download_time_series__raise_when_ratries_limit_reached(mocker, downloader):
     """Test that an error is reported after exceeding the download retry limit."""
     # NOTE: This test asumes that retries number == 5 (default) and retry on ApiError for _fetch()
     mocker.patch("gaia.downloaders.get_quarter_prefixes", return_value=("a_pref",))
