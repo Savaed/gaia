@@ -105,25 +105,24 @@ def plot_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, go
 
 
 def plot_tces_classes_distribution(distribution: dict[TceLabel, int]) -> go.Figure:
-    print(distribution)
     unlabeled_count = distribution[TceLabel.UNKNOWN]
     all_count = sum(distribution.values())
     labels = [
-        "unknown",
-        "known",
+        TceLabel.UNKNOWN.name,
+        "KNOWN",
         TceLabel.PC.name,
         TceLabel.FP.name,
         TceLabel.AFP.name,
         TceLabel.NTP.name,
     ]
-    parent = ["", "", "known", "known", TceLabel.FP.name, TceLabel.FP.name]
+    parents = ["", "", "KNOWN", "KNOWN", TceLabel.FP.name, TceLabel.FP.name]
     count = [
         unlabeled_count,
         all_count - unlabeled_count,
         distribution[TceLabel.PC],
-        distribution[TceLabel.AFP] + distribution[TceLabel.NTP],
+        distribution[TceLabel.FP],
         distribution[TceLabel.AFP],
         distribution[TceLabel.NTP],
     ]
-    fig = go.Figure(go.Sunburst(labels=labels, parents=parent, values=count, branchvalues="total"))
+    fig = go.Figure(go.Sunburst(labels=labels, parents=parents, values=count, branchvalues="total"))
     return fig
