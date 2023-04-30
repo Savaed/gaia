@@ -1,116 +1,112 @@
 from pathlib import Path
-from unittest.mock import Mock
 
 import duckdb
 import pytest
 from pandas.testing import assert_frame_equal
 
-from gaia.data.converters import CsvConverter
+from gaia.data.converters import CsvConverter, UnsupportedFileFormatError
 from tests.conftest import create_df
 
 
 @pytest.fixture
-def create_csv_file(tmp_path):
-    """Factory function to save a csv file. Return the path to it."""
+def mock_glob(mocker):
+    """Factory function to mock `glob.glob()` to return a specific paths."""
+
+    def _mock(glob_return_values):
+        mocker.patch("gaia.data.converters.glob.glob", side_effect=glob_return_values)
+
+    return _mock
+
+
+@pytest.fixture
+def create_csv_file():
+    """Factory function to save a csv file and return its path."""
 
     def _create(header, records, filename):
-        filepath = tmp_path / filename
         header_text = ",".join(header) + "\n"
         records_text = []
         for record in records:
             records_text.append(",".join(map(str, record)))
 
         file_content = header_text + "\n".join(records_text)
-        filepath.write_text(file_content)
-        return filepath
+        filename.write_text(file_content)
 
     return _create
 
 
 @pytest.fixture
-def single_csv_file(create_csv_file):
-    """Create a single csv file. Return a file path to it."""
+def create_single_csv_file(create_csv_file, tmp_path):
+    """Create a single csv file and return its path."""
     header = ["a", "b"]
     records = [[1, 2.0], [3, 4.0]]
-    return create_csv_file(header, records, "file.csv")
+    filepath = tmp_path / "file.csv"
+    create_csv_file(header, records, filepath)
+    return filepath
 
 
 @pytest.mark.parametrize(
     "filepath",
-    [Path("file.csv"), "file.csv", "./**/*.csv"],
+    [Path("file.csv"), "file.csv", "**/*.csv"],
     ids=["single_file", "single_file_as_path", "regex_patern"],
 )
-def test_csv_converter_convert__files_not_found(filepath, tmp_path):
-    """Test that `FileNotFoundError` is raised when no input file was found."""
+def test_csv_converter_convert__input_files_not_found(filepath, mock_glob):
+    """Test that `FileNotFoundError` is raised when no input file(s) was found."""
+    mock_glob([[]])
     with pytest.raises(FileNotFoundError):
-        CsvConverter().convert(tmp_path / filepath, "test_file.json")
+        CsvConverter().convert(filepath, Path("file.json"))
 
 
 @pytest.mark.parametrize(
-    "input,glob_return",
+    "inputs,glob_return",
     [
         ("file.json", ["file.json"]),
         (Path("file.py"), ["file.py"]),
         ("./**/*.(xml|py)", ["./file.py", "./folder1/file.py", "./folder1/folder2/file.xml"]),
     ],
     ids=[
-        "single_file",
+        "single_file_as_string",
         "single_file_as_path",
         "regex_pattern",
     ],
 )
-def test_csv_converter_convert__unsupported_input_files(input, glob_return, mocker):
+def test_csv_converter_convert__unsupported_input_files(inputs, glob_return, mock_glob):
     """Test that `ValueError` is raised when input file(s) are unsupported."""
-    mocker.patch("gaia.data.converters.glob.glob", return_value=glob_return)
-    with pytest.raises(ValueError):
-        CsvConverter().convert(input, "file.json")
+    mock_glob([glob_return])
+    with pytest.raises(UnsupportedFileFormatError):
+        CsvConverter().convert(inputs, Path("file.json"))
 
 
-def test_csv_converter_convert__unsupported_output_file(mocker):
+def test_csv_converter_convert__unsupported_output_file():
     """Test that `ValueError` is raised when output file are unsupported e.g. xml."""
-    mocker.patch("gaia.data.converters.glob.glob", return_value=["file.csv"])
-    with pytest.raises(ValueError):
-        CsvConverter().convert("file.csv", "file.xml")
+    with pytest.raises(UnsupportedFileFormatError):
+        CsvConverter().convert("file.csv", Path("file.xml"))
 
 
-def test_csv_converter_convert__invalid_include_column(mocker):
+def test_csv_converter_convert__invalid_include_column(mock_glob, create_single_csv_file):
     """Test that `ValueError` is raised when no column to select from input the file was found."""
-    invalid_column = "not_existent_column"
-    db_connection_mock = Mock(
-        **{
-            "execute.side_effect": duckdb.BinderException(
-                f'Binder Error: Referenced column "{invalid_column}" not found in FROM clause!',
-            ),
-        },
-    )
-    mocker.patch("gaia.data.converters.duckdb.connect", return_value=db_connection_mock)
-    mocker.patch("gaia.data.converters.glob.glob", return_value=["file.csv"])
+    mock_glob([[create_single_csv_file.as_posix()]])
     with pytest.raises(ValueError):
-        CsvConverter().convert("file.csv", "file.json")
+        CsvConverter().convert(
+            create_single_csv_file,
+            Path("file.json"),
+            include_columns={"not_existent_column"},
+        )
 
 
-def test_csv_converter_convert__invalid_mapping_column(mocker):
+def test_csv_converter_convert__invalid_mapping_column(mock_glob, create_single_csv_file):
     """Test that `ValueError` is raised when no column to rename was found."""
-    invalid_column = "not_existent_column"
-    db_connection_mock = Mock(
-        **{
-            "execute.side_effect": [
-                None,
-                duckdb.BinderException(
-                    f'Binder Error: Referenced column "{invalid_column}" not found in FROM clause!',
-                ),
-            ],
-        },
-    )
-    mocker.patch("gaia.data.converters.duckdb.connect", return_value=db_connection_mock)
-    mocker.patch("gaia.data.converters.glob.glob", return_value=["file.csv"])
+    mock_glob([[create_single_csv_file.as_posix()]])
     with pytest.raises(ValueError):
-        CsvConverter().convert("file.csv", "file.json", columns_mapping={invalid_column: "x"})
+        CsvConverter().convert(
+            create_single_csv_file,
+            Path("file.json"),
+            columns_mapping={"not_existent_column": "x"},
+        )
 
 
 @pytest.mark.parametrize("output", ["output.json", "output.parquet"])
 @pytest.mark.parametrize(
-    "columns, mapping, expected",
+    "columns,mapping,expected",
     [
         (None, None, create_df((["a", "b"], [1, 2.0], [3, 4.0]))),
         (["a"], None, create_df((["a"], [1], [3]))),
@@ -119,9 +115,9 @@ def test_csv_converter_convert__invalid_mapping_column(mocker):
     ],
     ids=[
         "all_columns_by_default",
-        "specified_column",
+        "specific_column",
         "map_columns_names",
-        "specified_columns",
+        "specific_columns",
     ],
 )
 def test_csv_converter_convert__convert_single_file_correctly(
@@ -129,37 +125,38 @@ def test_csv_converter_convert__convert_single_file_correctly(
     mapping,
     expected,
     output,
-    single_csv_file,
+    create_single_csv_file,
     tmp_path,
 ):
     """Test that data from one input file is converted correctly to supported format."""
-    output = (tmp_path / output).as_posix()
+    output_path = tmp_path / output
     CsvConverter().convert(
-        single_csv_file,
-        output=output,
+        create_single_csv_file,
+        output=output_path,
         include_columns=columns,
         columns_mapping=mapping,
     )
-    result = duckdb.sql(f"FROM {output!r};").df()
+    actual = duckdb.sql(f"FROM '{output_path}';").df()
 
     # Python's `int` data type when only positive numbers are used is internally cast to `uint`, so
-    # the dtype is different but the values ​​are the same, therefore `check_dtype=False` ok.
-    assert_frame_equal(result, expected, check_dtype=False)
+    # the dtype is different but the values ​​are the same, therefore `check_dtype=False` is ok.
+    assert_frame_equal(actual, expected, check_dtype=False)
 
 
 @pytest.fixture
-def two_csv_files(create_csv_file):
-    """Create two csv files with the same structure. Return the path to their parent directory."""
+def create_two_csv_files(create_csv_file, tmp_path):
+    """Create two csv files with the same structure and return their parent directory path."""
     header = ["a", "b"]
     records1 = [[1, 2.0], [3, 4.0]]
     records2 = [[5, 6.0], [7, 8.0]]
-    create_csv_file(header, records1, "file1.csv")
-    return create_csv_file(header, records2, "file2.csv").parent
+    create_csv_file(header, records1, tmp_path / "file1.csv")
+    create_csv_file(header, records2, tmp_path / "file2.csv")
+    return tmp_path
 
 
 @pytest.mark.parametrize("output", ["output.json", "output.parquet"])
 @pytest.mark.parametrize(
-    "columns, mapping, expected",
+    "columns,mapping,expected",
     [
         (None, None, create_df((["a", "b"], [1, 2.0], [3, 4.0], [5, 6.0], [7, 8.0]))),
         (["a"], None, create_df((["a"], [1], [3], [5], [7]))),
@@ -178,21 +175,21 @@ def test_csv_converter_convert__convert_multiple_files_correctly(
     mapping,
     expected,
     output,
-    two_csv_files,
+    create_two_csv_files,
     tmp_path,
 ):
     """Test that data from one input file is converted correctly to supported format."""
-    output = (tmp_path / output).as_posix()
-    files_pattern = f"{two_csv_files.as_posix()}/*.csv"
+    output_path = tmp_path / output
+    files_pattern = f"{create_two_csv_files}/*.csv"
     CsvConverter().convert(
         files_pattern,
-        output=output,
+        output=output_path,
         include_columns=columns,
         columns_mapping=mapping,
     )
-    # The order of the data from multiple files is not deterministic, so sort it
-    result = duckdb.sql(f"FROM {output!r} ORDER BY a;").df()
+    # The order of the data from multiple files is not deterministic, so sort it.
+    actual = duckdb.sql(f"FROM '{output_path}' ORDER BY a;").df()
 
     # Python's `int` data type when only positive numbers are used is internally cast to `uint`, so
     # the dtype is different but the values ​​are the same, therefore `check_dtype=False` ok.
-    assert_frame_equal(result, expected, check_dtype=False)
+    assert_frame_equal(actual, expected, check_dtype=False)
