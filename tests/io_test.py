@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -6,7 +7,7 @@ from astropy.io.fits.column import Column
 from astropy.io.fits.fitsrec import FITS_rec
 from astropy.io.fits.header import Header
 
-from gaia.io import FileSaver, read_fits
+from gaia.io import FileSaver, JsonNumpyEncoder, read_fits
 from tests.conftest import assert_dict_with_numpy_equal
 
 
@@ -154,3 +155,32 @@ def test_read_fits__return_correct_data(columns, expected, mocker, fits_data):
     mocker.patch("gaia.io.fits.getdata", return_value=fits_data)
     result = read_fits("test/file.fits", data_header="HEADER", columns=columns)
     assert_dict_with_numpy_equal(result, expected)
+
+
+@pytest.mark.parametrize(
+    "obj,expected",
+    [
+        ([1], "[1]"),
+        (np.array([1, 2, 3]), "[1, 2, 3]"),
+        ({"a": 1, "b": "string", "c": [1, 2, 3]}, '{"a": 1, "b": "string", "c": [1, 2, 3]}'),
+        (
+            {"a": 1, "b": "string", "c": np.array([1, 2, 3])},
+            '{"a": 1, "b": "string", "c": [1, 2, 3]}',
+        ),
+        (
+            {"a": 1, "b": "string", "c": np.array([1, 2, 3, 4]).reshape((2, 2))},
+            '{"a": 1, "b": "string", "c": [[1, 2], [3, 4]]}',
+        ),
+    ],
+    ids=[
+        "one_element_list",
+        "1D_numpy_array",
+        "complex_object",
+        "complex_object_with_1D_numpy_array",
+        "complex_object_with_2D_numpy_array",
+    ],
+)
+def test_json_numpy_decoder__decode_object(obj, expected):
+    """Test that encoding object without numpy array is correct."""
+    actual = json.dumps(obj, cls=JsonNumpyEncoder)
+    assert actual == expected

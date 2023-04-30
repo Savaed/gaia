@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
-from typing import Collection, Protocol, TypeAlias
+from typing import Any, Collection, Protocol, TypeAlias
 
+import numpy as np
 from astropy.io import fits
 
 from gaia.data.models import Series
@@ -73,3 +75,11 @@ def read_fits(
         data_columns = [column for column in data_columns if column in columns]
 
     return metadata | {column: data[column] for column in data_columns}
+
+
+class JsonNumpyEncoder(json.JSONEncoder):
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+
+        return super().default(obj)
