@@ -13,6 +13,7 @@ dependencies = [
     "aiohttp",
     "astropy",
     "dash",
+    "duckdb",
     "fakeredis",
     "hydra-core",
     "numpy",
