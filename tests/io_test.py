@@ -106,7 +106,7 @@ def test_read_fits__metadata_column_not_found(mocker):
         read_fits("test/file.fits", "HEADER", meta={"not_existent_column"})
 
 
-@pytest.mark.parametrize("meta", [(), [], set()], ids=["tuple", "list", "set"])
+@pytest.mark.parametrize("meta", [None, (), [], set()], ids=["none", "tuple", "list", "set"])
 def test_read_fits__meta_empty_or_none(meta, mocker, fits_data):
     """Test that metadata is not read from the FITS file header."""
     mocker.patch("gaia.io.fits.getdata", return_value=fits_data)
@@ -119,10 +119,9 @@ def test_read_fits__meta_empty_or_none(meta, mocker, fits_data):
     "meta_columns,expected",
     [
         ({"A"}, {"A": 1}),
-        (None, {"A": 1, "B": "xyz"}),
         ({"A", "B"}, {"A": 1, "B": "xyz"}),
     ],
-    ids=["all_columns_by_default", "single_column", "all_columns"],
+    ids=["single_column", "all_columns"],
 )
 def test_read_fits__return_correct_meta(meta_columns, expected, mocker, fits_header):
     """Test that metadata is read correctly."""
@@ -153,5 +152,5 @@ def test_read_fits__empty_columns(columns, mocker):
 def test_read_fits__return_correct_data(columns, expected, mocker, fits_data):
     """Test that correct data is returned."""
     mocker.patch("gaia.io.fits.getdata", return_value=fits_data)
-    result = read_fits("test/file.fits", data_header="HEADER", columns=columns, meta=())
+    result = read_fits("test/file.fits", data_header="HEADER", columns=columns)
     assert_dict_with_numpy_equal(result, expected)

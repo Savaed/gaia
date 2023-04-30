@@ -31,12 +31,15 @@ class FileSaver:
         destination.write_bytes(data)
 
 
+FitsData: TypeAlias = dict[str, Series | int | float | str]
+
+
 def read_fits(
     filepath: str | Path,
     data_header: str | int,
     columns: Columns | None = None,
     meta: Columns | None = None,
-) -> dict[str, Series | int | float | str]:
+) -> FitsData:
     """Read FITS file data with optional header metadata.
 
     Args:
@@ -52,11 +55,11 @@ def read_fits(
         FileNotFoundError: FITS file not found
 
     Returns:
-        dict[str, Series | int | float | str]: Dictionary combined from data and metadata
+        FitsData: Dictionary combined from data and metadata of the FITS file
     """
     metadata = {}
 
-    if meta or meta is None:
+    if meta:
         header = dict(fits.getheader(filepath))
         metadata = {column: header[column] for column in meta or header}
 
