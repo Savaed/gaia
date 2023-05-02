@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Iterable
-from typing import Mapping, TypeAlias
+from pathlib import Path
+from typing import Callable, Mapping, TypeAlias
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -68,3 +69,13 @@ def create_df(data: tuple[Iterable[Any], ...]) -> pd.DataFrame:
         pd.DataFrame: Table with passed columns and rows
     """
     return pd.DataFrame(data=data[1:], columns=data[0])
+
+
+@pytest.fixture
+def save_to_file(tmp_path: Path) -> Callable[[str], Path]:
+    def _save(data: str) -> Path:
+        filepath = tmp_path / "test_file"
+        filepath.write_text(data)
+        return filepath
+
+    return _save
