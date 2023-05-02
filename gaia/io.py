@@ -8,9 +8,6 @@ from astropy.io import fits
 from gaia.data.models import Series
 
 
-Columns: TypeAlias = Collection[str]
-
-
 class Saver(Protocol):
     def save_table(self, name: str, data: bytes) -> None:
         ...
@@ -34,6 +31,7 @@ class FileSaver:
 
 
 FitsData: TypeAlias = dict[str, Series | int | float | str]
+Columns: TypeAlias = Collection[str]
 
 
 def read_fits(
