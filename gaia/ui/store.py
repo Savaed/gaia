@@ -1,15 +1,12 @@
 import gzip
 import hashlib
 import pickle
-from typing import Any, Iterable, TypedDict
+from typing import Any, TypedDict
 
 import fakeredis
-import structlog
 
-from gaia.data.models import TCE, PeriodicData, StellarParameters
-
-
-logger = structlog.stdlib.get_logger()
+from gaia.data.models import TCE, Series, StellarParameters, TimeSeries
+from gaia.log import logger
 
 
 class DataStoreError(Exception):
@@ -44,7 +41,7 @@ class RedisStore:
             return hash_key
 
         cls._store.set(hash_key, serialized_data)
-        logger.info("Data saved", key=hash_key)
+        logger.bind(key=hash_key).info("Data saved")
         return hash_key
 
     @classmethod
@@ -65,7 +62,7 @@ class RedisStore:
             raise KeyError(key)
 
         data = pickle.loads(gzip.decompress(serialized_data))
-        logger.info("Data loaded", key=key)
+        logger.bind(key=key).info("Data loaded")
         return data
 
     @staticmethod
@@ -74,25 +71,21 @@ class RedisStore:
 
 
 class GlobalStore(TypedDict):
-    data_origin: str
     redis_data_key: str
     available_graphs: dict[str, str]
 
 
 class AllData(TypedDict):
-    period_edges: PeriodicData
-    series: dict[str, PeriodicData]
-    time: PeriodicData
-    tce_transits: dict[str, Iterable[str]]
-    tces: Iterable[TCE]
+    time_series: TimeSeries  # Any dict that extends this
+    tce_transits: list[str]
+    tces: list[TCE]
     stellar_parameters: StellarParameters
 
 
 class TimeSeriesAIOData(TypedDict):
-    id_: str
-    name: str
-    time: PeriodicData
-    series: PeriodicData
-    period_edges: PeriodicData
-    periods_labels: dict[str, Iterable[str]]
-    tce_transits: PeriodicData
+    graph_id: str
+    graph_name: str
+    time: Series
+    series: Series
+    periods_mask: Series
+    tce_transits: list[str]

@@ -54,6 +54,8 @@ dash-html-components==2.0.0
     # via dash
 dash-table==5.0.0
     # via dash
+duckdb==0.7.1
+    # via GAIA (pyproject.toml)
 exceptiongroup==1.0.4
     # via pytest
 fakeredis==2.10.0
@@ -98,6 +100,8 @@ keras==2.11.0
     # via tensorflow
 libclang==14.0.6
     # via tensorflow
+loguru==0.7.0
+    # via GAIA (pyproject.toml)
 markdown==3.4.1
     # via tensorboard
 markupsafe==2.1.1
@@ -193,8 +197,6 @@ six==1.16.0
     #   tensorflow
 sortedcontainers==2.4.0
     # via fakeredis
-structlog==22.3.0
-    # via GAIA (pyproject.toml)
 tenacity==8.2.2
     # via plotly
 tensorboard==2.11.0

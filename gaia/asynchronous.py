@@ -5,10 +5,8 @@ import signal
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeAlias
 
-import structlog
+from gaia.log import logger
 
-
-log = structlog.stdlib.get_logger()
 
 _EventLoop: TypeAlias = asyncio.AbstractEventLoop
 _Handler: TypeAlias = Callable[[signal.Signals | None], Coroutine[Any, Any, None]]
@@ -23,11 +21,11 @@ async def shutdown(exit_signal: signal.Signals | None = None) -> None:
             Defaults to None.
     """
     if exit_signal:
-        log.info(f"Received {exit_signal.name} exit signal")
+        logger.info(f"Received {exit_signal.name} exit signal")
 
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     await cancel_tasks(tasks)
-    log.info("Shutdown complete")
+    logger.info("Shutdown complete")
 
 
 def set_signals_handler(
@@ -62,11 +60,11 @@ def log_exception(_: _EventLoop, context: dict[str, Any]) -> None:
     """
     # In case of context['excpetion'] is a bare Exception evaluated to an empty string
     exception = context.get("exception", None)
-    log.error(f"Exception caught: {str(exception) or context['message'] }")
+    logger.error(f"Exception caught: {str(exception) or context['message'] }")
 
 
 async def cancel_tasks(tasks: _CancellableList) -> None:
-    log.info(f"Cancelling {len(tasks)} outstanding tasks")
+    logger.info(f"Cancelling {len(tasks)} outstanding tasks")
     [task.cancel() for task in tasks]
     await asyncio.gather(*tasks, return_exceptions=True)
-    log.info("Tasks cancelled")
+    logger.info("Tasks cancelled")

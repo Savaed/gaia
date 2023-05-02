@@ -16,11 +16,11 @@ dependencies = [
     "duckdb",
     "fakeredis",
     "hydra-core",
+    "loguru",
     "numpy",
     "pandas",
     "plotly",
     "rich",
-    "structlog",
     "tensorflow",
 ]
 

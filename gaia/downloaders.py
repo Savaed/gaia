@@ -18,17 +18,14 @@ from pathlib import Path
 from typing import Protocol, TypeAlias
 
 import aiohttp
-import structlog
 
 from gaia.enums import Cadence
 from gaia.http import ApiError, download
 from gaia.io import Saver
+from gaia.log import logger
 from gaia.progress import ProgressBar
 from gaia.quarters import get_quarter_prefixes
 from gaia.utils import retry
-
-
-log = structlog.stdlib.get_logger()
 
 
 @dataclass
@@ -93,12 +90,12 @@ class KeplerDownloader:
                     table = await download(self._create_table_url(request), sess)
                     self._raise_for_nasa_error(table)
                 except ApiError as ex:
-                    log.warning("Cannot download NASA table", reason=ex, table=request.name)
+                    logger.bind(reason=ex, table=request.name).warning("Cannot download NASA table")
                     continue
                 try:
                     self._saver.save_table(request.name, table)
                 except Exception as ex:
-                    log.warning("Cannot save NASA table", reason=ex, table=request.name)
+                    logger.bind(reason=ex, table=request.name).warning("Cannot save NASA table")
 
     async def download_time_series(self, ids: Iterable[int]) -> None:
         """Download time series in FITS files from the MAST archive.
@@ -189,17 +186,17 @@ class KeplerDownloader:
 
     @functools.singledispatchmethod
     def _handle_saving_result(self, result: None, url: str) -> None:
-        log.debug("FITS file save sucessful", url=url)
+        logger.debug("FITS file save sucessful", url=url)
         self._saved_file_urls.append(url)
 
     @_handle_saving_result.register
     def _(self, result: Exception, url: str) -> None:
-        # Is this log even necessary?
-        log.error("Cannot save FITS files", reason=result, url=url)
+        # Is this logger even necessary?
+        logger.error("Cannot save FITS files", reason=result, url=url)
         raise result
 
     async def _fetch_time_series(self, ids: Iterable[int], queue: _TimeSeriesQueue) -> None:
-        log.info("Start downloading FITS files")
+        logger.info("Start downloading FITS files")
         self._meta_path.touch(exist_ok=True)
         urls = self._filter_urls(list(self._create_mast_urls(ids)))
 
@@ -220,17 +217,17 @@ class KeplerDownloader:
 
     @functools.singledispatchmethod
     async def _handle_fetch_result(self, result: bytes, url: str, queue: _TimeSeriesQueue) -> None:
-        log.debug("FITS file download successful", url=url)
+        logger.debug("FITS file download successful", url=url)
         await queue.put((url, result))
 
     @_handle_fetch_result.register
     async def _(self, result: Exception, url: str, queue: _TimeSeriesQueue) -> None:
-        log.error("Cannot download FITS file", reason=result)
+        logger.error("Cannot download FITS file", reason=result)
         raise result
 
     @_handle_fetch_result.register
     async def _(self, result: _MissingFileError, url: str, queue: _TimeSeriesQueue) -> None:
-        log.debug("Missing FITS file", url=url)
+        logger.debug("Missing FITS file", url=url)
         self._missing_file_urls.append(url)
 
     @retry(on=ApiError)
@@ -247,7 +244,7 @@ class KeplerDownloader:
                 raise ApiError("HTTP request timeout", 408, url)
 
     def _create_mast_urls(self, ids: Iterable[int]) -> Iterator[str]:
-        log.info("Creating MAST HTTP URLs")
+        logger.info("Creating MAST HTTP URLs")
         # This produces urls like e.g:
         # https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:Kepler/url/missions/kepler/lightcurves/0008/000892376//kplr000892376-2009166043257_llc.fits
         for id_ in ids:
@@ -262,7 +259,7 @@ class KeplerDownloader:
         processed_urls = set(self._meta_path.read_text().splitlines())
         if processed_urls:
             meta_path = self._meta_path.as_posix()
-            log.info("Metadata file detected. Skip URLs from this file", path=meta_path)
+            logger.info("Metadata file detected. Skip URLs from this file", path=meta_path)
         return list(set(urls) - processed_urls)
 
     def _save_meta(self, urls: list[str]) -> None:
@@ -271,8 +268,8 @@ class KeplerDownloader:
             filepath = self._meta_path.as_posix()
             with open(filepath, mode="a") as f:
                 f.write(text)
-            log.debug("Metadata file saved", number_of_urls=len(urls), path=filepath)
+            logger.debug("Metadata file saved", number_of_urls=len(urls), path=filepath)
 
     def _url_batches(self, urls: list[str]) -> Iterator[Iterable[str]]:
-        log.debug("Creating URLs batches", batch_size=self._num_tasks)
+        logger.debug("Creating URLs batches", batch_size=self._num_tasks)
         yield from (urls[n : n + self._num_tasks] for n in range(0, len(urls), self._num_tasks))
