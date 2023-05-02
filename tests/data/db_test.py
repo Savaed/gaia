@@ -106,10 +106,10 @@ def test_query__column_not_found(duckdb_context):
 
 
 @pytest.fixture
-def db_context():
+def mock_db_context():
     """Factory function to create a mock of `DbContext` class."""
 
-    def _make_db_context(query_result=None, query_side_effect=None):
+    def _mock(query_result=None, query_side_effect=None):
         db_context_mock = Mock(spec=DbContext)
 
         if query_result is not None:
@@ -120,16 +120,16 @@ def db_context():
 
         return db_context_mock
 
-    return _make_db_context
+    return _mock
 
 
 @pytest.fixture(
     params=[MissingTableError("table1"), MissingColumnError("column1")],
     ids=["missing_table", "missing_column"],
 )
-def db_context_erroneous(request, db_context):
+def db_context_erroneous(request, mock_db_context):
     """Return a mock of `DbContext` that raise a specific error when call `query()` on it."""
-    return db_context(query_side_effect=request.param)
+    return mock_db_context(query_side_effect=request.param)
 
 
 class TimeSeriesTesting(TimeSeries):
@@ -137,13 +137,13 @@ class TimeSeriesTesting(TimeSeries):
 
 
 @pytest.fixture
-def time_series_repo():
+def create_time_series_repo():
     """Factory function to create an instance of `TimeSeriesRepository[TimeSeriesTesting]` class."""
 
-    def _make_repo(db_context, table="test_table"):
+    def _create(db_context, table="test_table"):
         return TimeSeriesRepository[TimeSeriesTesting](db_context, table)
 
-    return _make_repo
+    return _create
 
 
 @pytest.mark.parametrize(
@@ -153,57 +153,57 @@ def time_series_repo():
             1,
             None,
             [
-                dict(id=1, period="period1", time=[1, 2, 3], series_values=[1, 2, 3]),
-                dict(id=1, period="period2", time=[4, 5, 6], series_values=[4, 5, 6]),
+                dict(id=1, period=1, time=[1, 2, 3], series_values=[1, 2, 3]),
+                dict(id=1, period=2, time=[4, 5, 6], series_values=[4, 5, 6]),
             ],
             TimeSeriesTesting(
-                id="1",
+                id=1,
                 time=np.array([1, 2, 3, 4, 5, 6]),
-                periods_mask=["period1", "period1", "period1", "period2", "period2", "period2"],
+                periods_mask=np.array([1, 1, 1, 2, 2, 2]),
                 series_values=np.array([1, 2, 3, 4, 5, 6]),
             ),
         ),
         (
             1,
-            ("period1",),
-            [dict(id=1, period="period1", time=[1, 2, 3], series_values=[1, 2, 3])],
+            (1,),
+            [dict(id=1, period=1, time=[1, 2, 3], series_values=[1, 2, 3])],
             TimeSeriesTesting(
-                id="1",
+                id=1,
                 time=np.array([1, 2, 3]),
-                periods_mask=["period1", "period1", "period1"],
+                periods_mask=np.array([1, 1, 1]),
                 series_values=np.array([1, 2, 3]),
             ),
         ),
         (
             1,
-            ("period1", "period2"),
+            (1, 2),
             [
-                dict(id=1, period="period1", time=[1, 2, 3], series_values=[1, 2, 3]),
-                dict(id=1, period="period2", time=[4, 5, 6], series_values=[4, 5, 6]),
+                dict(id=1, period=1, time=[1, 2, 3], series_values=[1, 2, 3]),
+                dict(id=1, period=2, time=[4, 5, 6], series_values=[4, 5, 6]),
             ],
             TimeSeriesTesting(
-                id="1",
+                id=1,
                 time=np.array([1, 2, 3, 4, 5, 6]),
-                periods_mask=["period1", "period1", "period1", "period2", "period2", "period2"],
+                periods_mask=np.array([1, 1, 1, 2, 2, 2]),
                 series_values=np.array([1, 2, 3, 4, 5, 6]),
             ),
         ),
         (
             1,
-            ("period1",),
+            (1,),
             [
                 dict(
                     id=1,
-                    period="period1",
+                    period=1,
                     time=[1, 2, 3],
                     series_values=[1, 2, 3],
                     additional_key=[1, 2, 3],
                 ),
             ],
             TimeSeriesTesting(
-                id="1",
+                id=1,
                 time=np.array([1, 2, 3]),
-                periods_mask=["period1", "period1", "period1"],
+                periods_mask=np.array([1, 1, 1]),
                 series_values=np.array([1, 2, 3]),
             ),
         ),
@@ -215,33 +215,39 @@ def test_time_series_repository_get__return_correct_series(
     periods,
     context_return_value,
     expected,
-    db_context,
-    time_series_repo,
+    mock_db_context,
+    create_time_series_repo,
 ):
     """Test that correct data is returned."""
-    context = db_context(context_return_value)
-    repo = time_series_repo(context)
+    context = mock_db_context(context_return_value)
+    repo = create_time_series_repo(context)
     result = repo.get(target_id=target_id, periods=periods)
     assert_dict_with_numpy_equal(result, expected)
 
 
-def test_time_series_repository_get__db_context_error(db_context_erroneous, time_series_repo):
+def test_time_series_repository_get__db_context_error(
+    db_context_erroneous,
+    create_time_series_repo,
+):
     """Test that `DbRepositoryError` is raised when no required table or column was found."""
-    repo = time_series_repo(db_context_erroneous)
+    repo = create_time_series_repo(db_context_erroneous)
     with pytest.raises(DbRepositoryError, match="column|table"):
         repo.get(target_id=1)
 
 
-def test_time_series_repository_get__time_series_not_found(db_context, time_series_repo):
+def test_time_series_repository_get__time_series_not_found(
+    mock_db_context,
+    create_time_series_repo,
+):
     """Test that `DataNotFoundError` is raised when no requested time series was found."""
-    repo = time_series_repo(db_context([]))
+    repo = create_time_series_repo(mock_db_context([]))
     with pytest.raises(DataNotFoundError):
         repo.get(target_id=1)
 
 
-def test_time_series_repository_get__time_series_key_not_found_in_table(db_context):
+def test_time_series_repository_get__time_series_key_not_found_in_table(mock_db_context):
     """Test that `DbRepositoryError` is raised when time series key was not found in the table."""
-    context = db_context([{"id": "1"}])  # No required 'time' and 'period' keys
+    context = mock_db_context([{"id": "1"}])  # No required 'time' and 'period' keys
     repo = TimeSeriesRepository[TimeSeries](context, "test_table")
     with pytest.raises(DbRepositoryError):
         repo.get(target_id=1)
@@ -253,7 +259,7 @@ class StellarParametersTesting(StellarParameters):
 
 
 @pytest.fixture
-def stellar_params_repo():
+def create_stellar_params_repo():
     """
     Factory function to create an instance of
     `StellarParametersRepository[StellarParametersTesting]` class.
@@ -267,31 +273,34 @@ def stellar_params_repo():
 
 def test_stellar_parameters_repository_get__db_context_error(
     db_context_erroneous,
-    stellar_params_repo,
+    create_stellar_params_repo,
 ):
     """Test that `DbRepositoryError` is raised when no required table or column was found."""
-    repo = stellar_params_repo(db_context_erroneous)
+    repo = create_stellar_params_repo(db_context_erroneous)
     with pytest.raises(DbRepositoryError):
         repo.get(1)
 
 
-def test_stellar_parameters_repository_get__data_not_found(db_context, stellar_params_repo):
+def test_stellar_parameters_repository_get__data_not_found(
+    mock_db_context,
+    create_stellar_params_repo,
+):
     """Test that `DataNotFoundError` is raised when stellar parameters was notfound."""
-    repo = stellar_params_repo(db_context([]))
+    repo = create_stellar_params_repo(mock_db_context([]))
     with pytest.raises(DataNotFoundError):
         repo.get(1)
 
 
 def test_stellar_parameters_repository_get__missing_stellar_params_init_arguments(
-    db_context,
-    stellar_params_repo,
+    mock_db_context,
+    create_stellar_params_repo,
 ):
     """
     Test that `DbRepositoryError` is raised when no `TStellarParameters` initialize arguments
     was found in db result dictionary.
     """
-    context = db_context([{"other_key": "abc"}])  # Missing required 'id' key
-    repo = stellar_params_repo(context)
+    context = mock_db_context([{"other_key": "abc"}])  # Missing required 'id' key
+    repo = create_stellar_params_repo(context)
     with pytest.raises(DbRepositoryError):
         repo.get(1)
 
@@ -307,12 +316,12 @@ def test_stellar_parameters_repository_get__missing_stellar_params_init_argument
 def test_stellar_parameters_repository_get__return_correct_stellar_params(
     db_result,
     expected,
-    db_context,
-    stellar_params_repo,
+    mock_db_context,
+    create_stellar_params_repo,
 ):
     """Test that correct stellar parameters object is returned."""
-    context = db_context([db_result])
-    repo = stellar_params_repo(context)
+    context = mock_db_context([db_result])
+    repo = create_stellar_params_repo(context)
     result = repo.get(1)
     assert result == expected
 
@@ -339,16 +348,16 @@ def test_tce_repository_get_by_id__db_context_error(db_context_erroneous, tce_re
         repo.get_by_id(tce_id=1, target_id=1)
 
 
-def test_tce_repository_get_by_id__data_not_found(db_context, tce_repo):
+def test_tce_repository_get_by_id__data_not_found(mock_db_context, tce_repo):
     """Test that `DataNotFoundError` is raised when no TCE was found."""
-    repo = tce_repo(db_context([]))
+    repo = tce_repo(mock_db_context([]))
     with pytest.raises(DataNotFoundError):
         repo.get_by_id(tce_id=1, target_id=1)
 
 
 @pytest.fixture
-def db_context_missing_tce_init_args(db_context):
-    return db_context([dict(tce_id=1, target_id=1, name="tce", label_text="PC")])
+def db_context_missing_tce_init_args(mock_db_context):
+    return mock_db_context([dict(tce_id=1, target_id=1, name="tce", label_text="PC")])
 
 
 def test_tce_repository_get_by_id__missing_tce_init_arguments(
@@ -380,10 +389,10 @@ def tces(request):
     return data[request.param]
 
 
-def test_tce_repository_get_by_id__return_correct_tce(tces, db_context, tce_repo):
+def test_tce_repository_get_by_id__return_correct_tce(tces, mock_db_context, tce_repo):
     """Test that correct TCE is returned."""
     db_result, expected = tces
-    context = db_context([db_result])
+    context = mock_db_context([db_result])
     repo = tce_repo(context)
     result = repo.get_by_id(tce_id=1, target_id=1)
     assert result == expected
@@ -396,9 +405,9 @@ def test_tce_repository_get_by_name__db_context_error(db_context_erroneous, tce_
         repo.get_by_name("tce")
 
 
-def test_tce_repository_get_by_name__data_not_found(db_context, tce_repo):
+def test_tce_repository_get_by_name__data_not_found(mock_db_context, tce_repo):
     """Test that `DataNotFoundError` is raised when no TCE was found."""
-    repo = tce_repo(db_context([]))
+    repo = tce_repo(mock_db_context([]))
     with pytest.raises(DataNotFoundError):
         repo.get_by_name("tce")
 
@@ -414,9 +423,9 @@ def test_tce_repository_get_by_name__missing_tce_init_arguments(
 
 
 @pytest.mark.parametrize("name", [None, ""])
-def test_tce_repository_get_by_name__name_is_empty_or_none(name, db_context, tce_repo):
+def test_tce_repository_get_by_name__name_is_empty_or_none(name, mock_db_context, tce_repo):
     """ "Test that `ValueError` is raised when specified TCE name is None or an empty string."""
-    repo = tce_repo(db_context())
+    repo = tce_repo(mock_db_context())
     with pytest.raises(ValueError):
         repo.get_by_name(name)
 
@@ -424,10 +433,10 @@ def test_tce_repository_get_by_name__name_is_empty_or_none(name, db_context, tce
 # TODO: Test for several TCEs with the same name?
 
 
-def test_tce_repository_get_by_name__return_correct_tce(tces, db_context, tce_repo):
+def test_tce_repository_get_by_name__return_correct_tce(tces, mock_db_context, tce_repo):
     """Test that correct TCE is returned."""
     db_result, expected = tces
-    context = db_context([db_result])
+    context = mock_db_context([db_result])
     repo = tce_repo(context)
     result = repo.get_by_name("tce")
     assert result == expected
@@ -440,9 +449,9 @@ def test_tce_repository_get_for_target__db_context_error(db_context_erroneous, t
         repo.get_for_target(1)
 
 
-def test_tce_repository_get_for_target__target_not_found(db_context, tce_repo):
+def test_tce_repository_get_for_target__target_not_found(mock_db_context, tce_repo):
     """Test that `DataNotFoundError` is raised when no target was found."""
-    repo = tce_repo(db_context([]))
+    repo = tce_repo(mock_db_context([]))
     with pytest.raises(DataNotFoundError):
         repo.get_for_target(1)
 
@@ -457,27 +466,27 @@ def test_tce_repository_get_for_target__missing_tce_init_arguments(
         repo.get_for_target(1)
 
 
-def test_tce_repository_get_for_target__return_correct_tces(tces, db_context, tce_repo):
+def test_tce_repository_get_for_target__return_correct_tces(tces, mock_db_context, tce_repo):
     """Test that (all) correct TCE(s) are returned."""
     db_result, expected = tces
-    context = db_context([db_result])
+    context = mock_db_context([db_result])
     repo = tce_repo(context)
     result = repo.get_by_name("tce")
     assert [result] == [expected]  # `result`, `expected` are a single object, but should be a list
 
 
-def test_tce_repository_tce_count__table_not_found(db_context, tce_repo):
+def test_tce_repository_tce_count__table_not_found(mock_db_context, tce_repo):
     """Test that `DbRepositoryError` is raised when no required table was found."""
-    context = db_context(query_side_effect=MissingTableError("table"))
+    context = mock_db_context(query_side_effect=MissingTableError("table"))
     repo = tce_repo(context)
     with pytest.raises(DbRepositoryError):
         repo.tce_count
 
 
 @pytest.mark.parametrize("count", [0, 9])
-def test_tce_repository_tce_count__return_correct_count(count, db_context, tce_repo):
+def test_tce_repository_tce_count__return_correct_count(count, mock_db_context, tce_repo):
     """Test that correct count of all in TCEs the table is returned."""
-    context = db_context([{"count_star()": count}])
+    context = mock_db_context([{"count_star()": count}])
     repo = tce_repo(context)
     result = repo.tce_count
     assert result == count
@@ -491,10 +500,10 @@ def test_tce_repository_unique_target_ids__db_context_error(db_context_erroneous
 
 
 @pytest.mark.parametrize("ids", [[], [1], [1, 2]])
-def test_tce_repository_unique_target_ids__return_correct_count(ids, db_context, tce_repo):
+def test_tce_repository_unique_target_ids__return_correct_count(ids, mock_db_context, tce_repo):
     """Test that correct count of unique target IDs is returned."""
     db_result = [{"target_id": id_} for id_ in ids]
-    context = db_context(db_result)
+    context = mock_db_context(db_result)
     repo = tce_repo(context)
     result = repo.unique_target_ids
     assert result == ids
@@ -517,9 +526,14 @@ def test_tce_repository_events__db_context_error(db_context_erroneous, tce_repo)
         ),
     ],
 )
-def test_tce_repository_events__return_correct_events(db_result, expected, db_context, tce_repo):
+def test_tce_repository_events__return_correct_events(
+    db_result,
+    expected,
+    mock_db_context,
+    tce_repo,
+):
     """Test that correct events are returned for all TCEs."""
-    context = db_context(db_result)
+    context = mock_db_context(db_result)
     repo = tce_repo(context)
     result = repo.events
     assert result == expected
@@ -532,9 +546,14 @@ def test_tce_repository_labels_distribution__db_context_error(db_context_erroneo
         repo.labels_distribution
 
 
-def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_repo):
+def test_tce_repository_labels_distribution__invalid_tce_labels(mock_db_context, tce_repo):
     """Test that any ambiguous/invalid label is treated as `TceLabel.UNKNOW`."""
-    context = db_context([{"abc": 5, "PC": 10}])  # Label 'abc' not in TceLabel
+    context = mock_db_context(
+        [
+            {"label_text": "PC", "count": 10},
+            {"label_text": "abc", "count": 5},
+        ],
+    )  # Label 'abc' not in TceLabel
     expected = dict.fromkeys(TceLabel, 0) | {TceLabel.PC: 10, TceLabel.UNKNOWN: 5}
     repo = tce_repo(context)
     result = repo.labels_distribution
@@ -545,7 +564,13 @@ def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_
     "db_result,expected",
     [
         (
-            [{"PC": 10, "NTP": 20, "AFP": 30, "FP": 40, "UNKNOWN": 10}],
+            [
+                {"label_text": "PC", "count": 10},
+                {"label_text": "NTP", "count": 20},
+                {"label_text": "AFP", "count": 30},
+                {"label_text": "FP", "count": 40},
+                {"label_text": "UNKNOWN", "count": 10},
+            ],
             {
                 TceLabel.PC: 10,
                 TceLabel.NTP: 20,
@@ -555,7 +580,11 @@ def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_
             },
         ),
         (
-            [{"PC": 10, "NTP": 20, "AFP": 30}],
+            [
+                {"labels_text": "PC", "count": 10},
+                {"labels_text": "NTP", "count": 20},
+                {"labels_text": "AFP", "count": 30},
+            ],
             {
                 TceLabel.PC: 10,
                 TceLabel.NTP: 20,
@@ -565,7 +594,11 @@ def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_
             },  # FP = AFP + NTP
         ),
         (
-            [{"NTP": 20, "AFP": 30, "FP": 40}],
+            [
+                {"labels_text": "NTP", "count": 20},
+                {"labels_text": "AFP", "count": 30},
+                {"labels_text": "FP", "count": 40},
+            ],
             {
                 TceLabel.PC: 0,
                 TceLabel.NTP: 20,
@@ -575,7 +608,12 @@ def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_
             },
         ),
         (
-            [{"PLANET_CANDIDATE": 10, "NTP": 20, "AFP": 30, "FP": 40}],
+            [
+                {"label_text": "PLANET_CANDIDATE", "count": 10},
+                {"label_text": "NTP", "count": 20},
+                {"label_text": "AFP", "count": 30},
+                {"label_text": "FP", "count": 40},
+            ],
             {
                 TceLabel.PC: 10,
                 TceLabel.NTP: 20,
@@ -585,7 +623,12 @@ def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_
             },
         ),
         (
-            [{"PLANET_CANDIDATE": 10, "NTP": 20, "AFP": 30, "FP": 40}],
+            [
+                {"labels_text": "PLANET_CANDIDATE", "count": 10},
+                {"labels_text": "NTP", "count": 20},
+                {"labels_text": "AFP", "count": 30},
+                {"labels_text": "FP", "count": 40},
+            ],
             {
                 TceLabel.PC: 10,
                 TceLabel.NTP: 20,
@@ -600,11 +643,11 @@ def test_tce_repository_labels_distribution__invalid_tce_labels(db_context, tce_
 def test_tce_repository_labels_distribution__return_correct_distribution(
     db_result,
     expected,
-    db_context,
+    mock_db_context,
     tce_repo,
 ):
     """Test that correct distribution is returned for all available TCE labels."""
-    context = db_context(db_result)
+    context = mock_db_context(db_result)
     repo = tce_repo(context)
     result = repo.labels_distribution
     assert result == expected

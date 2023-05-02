@@ -136,7 +136,7 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
         return self._construct_output(target_id, results)
 
     def _construct_output(self, target_id: Id, results: list[QueryResult]) -> TTimeSeries:
-        series_base = TimeSeries(id=str(target_id), time=np.array([]), periods_mask=[])
+        series_base = TimeSeries(id=target_id, time=np.array([]), periods_mask=np.array([]))
         tmp_remaining_series: dict[str, list[Series]] = defaultdict(list)
         required_keys: frozenset[str] = self.__orig_class__.__args__[0].__required_keys__  # type: ignore # noqa
 
@@ -152,8 +152,10 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
 
             # We expect at least 'id', 'time' and 'period' to be in `result`
             del result["id"]  # Not used, set before and remains the same for every result
-            current_periods_mask = [result.pop("period")] * len(result["time"])
-            series_base["periods_mask"].extend(current_periods_mask)
+            current_periods_mask = np.repeat(result.pop("period"), len(result["time"]))
+            series_base["periods_mask"] = np.concatenate(
+                [series_base["periods_mask"], current_periods_mask],
+            )
             series_base["time"] = np.concatenate([series_base["time"], result.pop("time")])
 
             # Set remaining time series
@@ -167,12 +169,12 @@ class TimeSeriesRepository(Generic[TTimeSeries]):
         return series_base | remaining_series  # type: ignore
 
     def _build_query_string(self, periods: tuple[str, ...]) -> str:
-        query = f"SELECT * FROM {self._table} WHERE id=?"
+        query = f'SELECT * FROM "{self._table}" WHERE id=?'
 
         if periods:
             query += f" AND period IN ({'?, ' * len(periods)})"
 
-        return query + ";"
+        return query + " ORDER BY period;"
 
 
 TStellarParameters = TypeVar("TStellarParameters", bound=StellarParameters)
@@ -359,15 +361,17 @@ class TceRepository(Generic[TTce]):
         """Distribution of TCE class labels. Ambiguous labels are assumed to be `Tce Label.UNKNOWN`.
 
         Raises:
-            DbRepositoryError: Database table not found OR required column 'label' not found
+            DbRepositoryError: Database table not found OR required column 'label_text' not found
         """
         distribution = dict.fromkeys(TceLabel, 0)  # Make sure all labels are present
 
-        result = self._query(f'SELECT "label", count(*) FROM {self._table} GROUP BY "label";')
-        if not result:
+        results = self._query(
+            f"SELECT label_text, count(*) FROM {self._table} GROUP BY label_text;",
+        )
+        if not results:
             return distribution
-
-        for label, count in result[0].items():
+        for result in results:
+            label, count = result.values()
             if label in [label_.name for label_ in TceLabel]:
                 distribution[TceLabel[label]] = count
             elif label in [label_.value for label_ in TceLabel]:
