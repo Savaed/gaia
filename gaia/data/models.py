@@ -118,7 +118,7 @@ class TimeSeriesBase(TypedDict):
 class PeriodicTimeSeries(TimeSeriesBase):
     """Time series for a single observation period."""
 
-    period: int | str
+    period: int
 
 
 class TimeSeries(TimeSeriesBase):
