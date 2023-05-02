@@ -117,20 +117,20 @@ Series: TypeAlias = npt.NDArray[np.float_]
 class TimeSeriesBase(TypedDict):
     """Minimum time series representation."""
 
-    id: str
+    id: Id
     time: Series
 
 
 class PeriodicTimeSeries(TimeSeriesBase):
     """Time series for a single observation period."""
 
-    period: str
+    period: int | str
 
 
 class TimeSeries(TimeSeriesBase):
     """Basic time series for multiple observation periods"""
 
-    periods_mask: list[str]
+    periods_mask: Series
 
 
 class KeplerTimeSeries(TimeSeries):
