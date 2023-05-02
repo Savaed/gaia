@@ -40,7 +40,7 @@ class TCE(abc.ABC):
     further analysis.
     """
 
-    tce_id: Id
+    id: Id
     target_id: Id
     epoch: float
     duration: float
@@ -86,16 +86,10 @@ class KeplerTCE(TCE):
     radius: float
     fitted_period: float
     transit_depth: float
-    _normalize_duration: bool = True
-
-    def __post_init__(self) -> None:
-        if self._normalize_duration:
-            # TCE 'duration' for NASA tables is in hours
-            self.duration = round(self.duration / 24, 4)
 
 
 @dataclass
-class StellarParameters:
+class StellarParameters(abc.ABC):
     """Physical properties of the target star or binary/multiple system."""
 
     id: Id
