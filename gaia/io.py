@@ -80,4 +80,4 @@ class JsonNumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
 
-        return super().default(obj)
+        return super().default(obj)  # pragma: no cover
