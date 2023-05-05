@@ -63,7 +63,7 @@ class ProgressBar(progress.Progress):
         spinner_name = (
             "christmas"
             if datetime(now.year, 12, 21) < now < datetime(now.year + 1, 1, 2)
-            else "christmas"
+            else "earth"
         )
         super().__init__(
             progress.SpinnerColumn(spinner_name),
