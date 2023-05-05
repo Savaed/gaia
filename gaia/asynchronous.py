@@ -23,7 +23,7 @@ async def shutdown(exit_signal: signal.Signals | None = None) -> None:
     if exit_signal:
         logger.info(f"Received {exit_signal.name} exit signal")
 
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
     await cancel_tasks(tasks)
     logger.info("Shutdown complete")
 
