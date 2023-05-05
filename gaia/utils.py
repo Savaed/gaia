@@ -4,6 +4,8 @@ import random
 from collections.abc import Awaitable, Callable
 from typing import ParamSpec, TypeAlias, TypeVar
 
+from gaia.log import logger
+
 
 def check_kepid(kepid: int) -> None:
     """Check the validity of the passed `kepid`.
@@ -61,6 +63,10 @@ def retry(
 
                     if errors_counter > retries:
                         raise
+
+                    logger.bind(backoff=backoff).warning(
+                        f"Error encountered. Retring {errors_counter}/{retries}",
+                    )
 
                     await asyncio.sleep(backoff)
 
