@@ -3,7 +3,7 @@ from unittest.mock import ANY, MagicMock, call
 
 import pytest
 
-from gaia.downloaders import KeplerDownloader, TableRequest
+from gaia.downloaders import KeplerDownloader
 from gaia.enums import Cadence
 from gaia.http import ApiError
 from gaia.io import FileSaver
@@ -27,14 +27,17 @@ def downloader(tmp_path):
         cadence=Cadence.LONG,
     )
     # Make sure that metadata is temporal for each test
-    instance._meta_path = tmp_path / "test_meta.txt"
+    instance._checkpoint_filepath = tmp_path / "test_meta.txt"
     return instance
 
 
 @pytest.mark.asyncio
 async def test_download_tables__no_failure_on_single_table_download_error(mocker, downloader):
     """Test that a single table downloading error does not interrupt the entire process."""
-    requests = [TableRequest("tab1"), TableRequest("tab2")]
+    requests = [
+        (f"{NASA_BASE_URL}?table=tab1", "tab1.csv"),
+        (f"{NASA_BASE_URL}?table=tab1", "tab1.csv"),
+    ]
     # Error on second tables downloading
     mocker.patch(
         "gaia.downloaders.download",
@@ -46,7 +49,10 @@ async def test_download_tables__no_failure_on_single_table_download_error(mocker
 @pytest.mark.asyncio
 async def test_download_tables__no_failure_on_single_table_saving_error(mocker, downloader):
     """Test that a single table saving error does not interrupt the entire process."""
-    requests = [TableRequest("tab1"), TableRequest("tab2")]
+    requests = [
+        (f"{NASA_BASE_URL}?table=tab1", "tab1.csv"),
+        (f"{NASA_BASE_URL}?table=tab1", "tab1.csv"),
+    ]
     mocker.patch("gaia.downloaders.download", side_effect=[b"test data", b"test data"])
     # Error on second table saving
     downloader._saver.save_table.side_effect = [Exception("test error"), None]
@@ -55,20 +61,14 @@ async def test_download_tables__no_failure_on_single_table_saving_error(mocker, 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "table_request,url",
+    "table_request",
     [
-        (TableRequest("table1"), f"{NASA_BASE_URL}?table=table1&format=csv"),
+        (f"{NASA_BASE_URL}?table=table1&format=csv", ""),
+        (f"{NASA_BASE_URL}?table=table1&select=col1,col2&format=csv", ""),
+        (f"{NASA_BASE_URL}?table=table1&where=col1 is null&format=csv", ""),
         (
-            TableRequest("table1", columns=["col1", "col2"]),
-            f"{NASA_BASE_URL}?table=table1&select=col1,col2&format=csv",
-        ),
-        (
-            TableRequest("table1", query="col1 is null"),
-            f"{NASA_BASE_URL}?table=table1&where=col1 is null&format=csv",
-        ),
-        (
-            TableRequest("table1", columns=["col1", "col2"], query="col1 is null"),
             f"{NASA_BASE_URL}?table=table1&select=col1,col2&where=col1 is null&format=csv",
+            "",
         ),
     ],
     ids=[
@@ -78,8 +78,9 @@ async def test_download_tables__no_failure_on_single_table_saving_error(mocker, 
         "table_columns_query",
     ],
 )
-async def test_download_tables__request_correct_url(table_request, url, mocker, downloader):
+async def test_download_tables__request_correct_url(table_request, mocker, downloader):
     """Test that download function is called with the correct URL."""
+    url, _ = table_request
     download_mock = mocker.patch("gaia.downloaders.download", return_value=b"test data")
     await downloader.download_tables([table_request])
     download_mock.assert_called_with(url, ANY)
@@ -89,7 +90,7 @@ async def test_download_tables__request_correct_url(table_request, url, mocker, 
 async def test_download_tables__treat_http_200_error_body_as_error(mocker, downloader):
     """Test that the response beginning with 'ERROR<br>' is treated as an error and not saved."""
     mocker.patch("gaia.downloaders.download", return_value=b"ERROR<br>")
-    await downloader.download_tables([TableRequest("tab1")])
+    await downloader.download_tables([(f"{NASA_BASE_URL}?table=table1&format=csv", "table1.csv")])
     downloader._saver.save_table.assert_not_called()
 
 
@@ -104,7 +105,7 @@ def downloader_with_test_meta(downloader):
     https://www.mast.com/0000/000000001//kplr000000001-a_pref_llc.fits saved in the metadata file.
     """
     downloaded_url = f"{URL_A_PREF}\n"
-    downloader._meta_path.write_text(downloaded_url)
+    downloader._checkpoint_filepath.write_text(downloaded_url)
     return downloader
 
 
@@ -187,7 +188,7 @@ async def test_download_time_series__save_meta(http_responses, mocker, downloade
     mocker.patch("gaia.downloaders.download", side_effect=http_responses)
     expected = set([URL_A_PREF, URL_B_PREF])
     await downloader.download_time_series(TEST_ID)
-    saved_meta = set(downloader._meta_path.read_text().splitlines())
+    saved_meta = set(downloader._checkpoint_filepath.read_text().splitlines())
     assert saved_meta == expected
 
 
@@ -242,3 +243,15 @@ async def test_download_time_series__raise_on_file_saving_error(mocker, download
     downloader._saver.save_time_series.side_effect = PermissionError(saving_error_msg)
     with pytest.raises(PermissionError, match=saving_error_msg):
         await downloader.download_time_series(TEST_ID)
+
+
+@pytest.mark.asyncio
+async def test_download_time_series__return_immiedietly_if_no_urls(
+    mocker,
+    downloader_with_test_meta,
+):
+    """Test that ."""
+    mocker.patch("gaia.downloaders.get_quarter_prefixes", return_value=())
+    http_download_mock = mocker.patch("gaia.downloaders.download")
+    await downloader_with_test_meta.download_time_series(TEST_ID)
+    http_download_mock.assert_not_called()

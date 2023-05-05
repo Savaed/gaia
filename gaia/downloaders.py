@@ -13,12 +13,12 @@ import concurrent.futures
 import functools
 import re
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, TypeAlias
 
 import aiohttp
 
+from gaia.data.models import Id
 from gaia.enums import Cadence
 from gaia.http import ApiError, download
 from gaia.io import Saver
@@ -28,23 +28,19 @@ from gaia.quarters import get_quarter_prefixes
 from gaia.utils import retry
 
 
-@dataclass
-class TableRequest:
-    name: str
-    query: str | None = None
-    columns: list[str] = field(default_factory=list)
+HTTPFileRequest: TypeAlias = tuple[str, str]  # (HTTP request, output filename)
 
 
-class Downloader(Protocol):
-    async def download_tables(self, requests: Iterable[TableRequest]) -> None:
+class RestDownloader(Protocol):
+    async def download_tables(self, requests: Iterable[HTTPFileRequest]) -> None:
         ...
 
-    async def download_time_series(self, ids: Iterable[int]) -> None:
+    async def download_time_series(self, ids: Iterable[Id]) -> None:
         ...
 
 
 class _MissingFileError(Exception):
-    """Internal error reported when HTTP 404 is received while downloading time series files."""
+    """Internal error raised when HTTP 404 is received while downloading time series files."""
 
 
 _TimeSeriesQueue: TypeAlias = asyncio.Queue[tuple[str, bytes]]
@@ -54,9 +50,9 @@ _SavingTasks: TypeAlias = list[tuple[str, asyncio.Future[None]]]
 class KeplerDownloader:
     """Downloader for fetching and saving Kepler table and time series files.
 
-    Tables in CSV format and time series in FITS format are fetched asynchronously via REST API
-    from the official archives of NASA and the Mikulski Archive for Space Telescopes (MAST) and
-    then saved to the local or external destination.
+    Tables in and time series in FITS format are fetched asynchronously via REST API from the
+    official archives of NASA and the Mikulski Archive for Space Telescopes (MAST) and then saved
+    to the specific destination.
     """
 
     def __init__(
@@ -65,39 +61,41 @@ class KeplerDownloader:
         cadence: Cadence,
         nasa_base_url: str,
         mast_base_url: str,
-        num_tasks: int = 40,
+        num_async_requests: int = 25,
     ) -> None:
         self._saver = saver
         self._nasa_base_url = nasa_base_url.rstrip("/")
         self._mast_base_url = mast_base_url.rstrip("/")
-        self._meta_path = Path().home() / f"{self.__class__.__name__}_metadata.txt"
+        self._checkpoint_filepath = Path().cwd() / f"{self.__class__.__name__}_checkpoint.txt"
         self._cadence = cadence
-        self._num_tasks = num_tasks
+        self._num_async_requests = num_async_requests
         self._missing_file_urls: list[str] = []
         self._saved_file_urls: list[str] = []
 
-    async def download_tables(self, requests: Iterable[TableRequest]) -> None:
-        """Download tables in CSV files from the NASA archive.
+    async def download_tables(self, requests: Iterable[HTTPFileRequest]) -> None:
+        """Download tables in CSV files from the NASA archive via REST API.
 
         Downloaded files are saved to the local or external file system e.g. HDFS, AWS etc.
 
         Args:
-            requests (Iterable [TableRequest]): Requests specifying which tables to download
+            requests (Iterable [str]): HTTP requests specifying which tables to download
         """
         async with aiohttp.ClientSession() as sess:
-            for request in requests:
+            for request, filename in requests:
+                log = logger.bind(table=filename)
                 try:
-                    table = await download(self._create_table_url(request), sess)
+                    table = await download(request, sess)
                     self._raise_for_nasa_error(table)
                 except ApiError as ex:
-                    logger.bind(reason=ex, table=request.name).warning("Cannot download NASA table")
+                    log.bind(reason=ex).warning("Cannot download NASA table")
                     continue
                 try:
-                    self._saver.save_table(request.name, table)
+                    self._saver.save_table(filename, table)
+                    log.info("Table downloaded")
                 except Exception as ex:
-                    logger.bind(reason=ex, table=request.name).warning("Cannot save NASA table")
+                    log.bind(reason=ex).warning("Cannot save NASA table")
 
-    async def download_time_series(self, ids: Iterable[int]) -> None:
+    async def download_time_series(self, ids: Iterable[Id]) -> None:
         """Download time series in FITS files from the MAST archive.
 
         Downloaded files are saved in a local or external file system, e.g. HDFS, AWS, etc.
@@ -111,13 +109,21 @@ class KeplerDownloader:
         Args:
             ids (Iterable[int]): The IDs of the targets for which the time series are downloaded
         """
-        queue: _TimeSeriesQueue = asyncio.Queue(self._num_tasks)
+        queue: _TimeSeriesQueue = asyncio.Queue(self._num_async_requests)
+
+        # For Kepler, this is always a real integer, but can be the string '000123'.
         downloading_task = self._fetch_time_series(ids, queue)
         saving_task = asyncio.create_task(self._save_time_series(queue))
         await downloading_task
         await queue.join()
         saving_task.cancel()
-        await saving_task
+
+        try:
+            await saving_task
+        except asyncio.CancelledError:
+            # When there are no download urls, the `saving_task` is immediately canceled and raise a
+            # CancelledError
+            ...
 
     def _raise_for_nasa_error(self, response_body: bytes) -> None:
         # Error from NASA API is of format:
@@ -132,18 +138,12 @@ class KeplerDownloader:
             msg = error_msg.strip(b" .").decode("utf-8")
             raise ApiError(message=msg, status=200, url=None)
 
-    def _create_table_url(self, request: TableRequest) -> str:
-        table = f"table={request.name}"
-        select = f"&select={','.join(request.columns)}" if request.columns else ""
-        query = f"&where={request.query}" if request.query else ""
-        return f"{self._nasa_base_url}?{table}{select}{query}&format=csv"  # Only csv for now
-
     async def _save_time_series(self, queue: _TimeSeriesQueue) -> None:
-        saving_tasks_len = self._num_tasks * 2
+        saving_tasks_len = self._num_async_requests * 2
         saving_tasks: _SavingTasks = []
         loop = asyncio.get_running_loop()
 
-        with concurrent.futures.ThreadPoolExecutor(self._num_tasks) as pool:
+        with concurrent.futures.ThreadPoolExecutor(self._num_async_requests) as pool:
             try:
                 while True:
                     url, data = await self._get_queue_item(queue)
@@ -157,8 +157,18 @@ class KeplerDownloader:
                     self._add_save_task(saving_tasks, loop, pool, *queue.get_nowait())
                 if saving_tasks:
                     await self._await_save(saving_tasks)
+                # raise
             finally:
-                self._save_meta(self._saved_file_urls)
+                self._save_downloaded_urls_checkpoint()
+
+    def _save_downloaded_urls_checkpoint(self) -> None:
+        if self._saved_file_urls:
+            self._save_meta(self._saved_file_urls)
+            logger.info(
+                "Downloaded time series urls saved",
+                urls=len(self._saved_file_urls),
+                path=self._checkpoint_filepath.as_posix(),
+            )
 
     def _add_save_task(
         self,
@@ -185,25 +195,29 @@ class KeplerDownloader:
             self._handle_saving_result(result, url)
 
     @functools.singledispatchmethod
-    def _handle_saving_result(self, result: None, url: str) -> None:
-        logger.debug("FITS file save sucessful", url=url)
+    def _handle_saving_result(self, _: None, url: str) -> None:
         self._saved_file_urls.append(url)
+        logger.bind(url=url).debug("FITS file saved")
 
     @_handle_saving_result.register
     def _(self, result: Exception, url: str) -> None:
         # Is this logger even necessary?
-        logger.error("Cannot save FITS files", reason=result, url=url)
+        logger.bind(reason=result, url=url).error("Cannot save FITS files")
         raise result
 
-    async def _fetch_time_series(self, ids: Iterable[int], queue: _TimeSeriesQueue) -> None:
-        logger.info("Start downloading FITS files")
-        self._meta_path.touch(exist_ok=True)
-        urls = self._filter_urls(list(self._create_mast_urls(ids)))
+    async def _fetch_time_series(self, ids: Iterable[Id], queue: _TimeSeriesQueue) -> None:
+        try:
+            tasks = None
+            self._checkpoint_filepath.touch()
+            urls = self._filter_urls(list(self._create_mast_urls(ids)))
 
-        with ProgressBar() as bar:
-            task_id = bar.add_task("Downloading FITS files", total=len(urls))
+            if not urls:
+                logger.info("No URLs to download")
+                return
 
-            try:
+            with ProgressBar() as bar:
+                task_id = bar.add_task("Downloading FITS files", total=len(urls))
+
                 for url_batch in self._url_batches(urls):
                     tasks = [self._fetch(url) for url in url_batch]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -212,8 +226,21 @@ class KeplerDownloader:
                         await self._handle_fetch_result(result, url, queue)
 
                     bar.advance(task_id, len(results))
-            finally:
-                self._save_meta(self._missing_file_urls)
+        except asyncio.CancelledError:
+            if tasks:  # pragma: no cover
+                await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        finally:
+            self._save_missing_urls_checkpoint()
+
+    def _save_missing_urls_checkpoint(self) -> None:
+        if self._missing_file_urls:
+            self._save_meta(self._missing_file_urls)
+            logger.info(
+                "Missing time series urls saved",
+                urls=len(self._missing_file_urls),
+                path=self._checkpoint_filepath.as_posix(),
+            )
 
     @functools.singledispatchmethod
     async def _handle_fetch_result(self, result: bytes, url: str, queue: _TimeSeriesQueue) -> None:
@@ -243,12 +270,12 @@ class KeplerDownloader:
                 # In case of aiohttp session timeout (300s by default)
                 raise ApiError("HTTP request timeout", 408, url)
 
-    def _create_mast_urls(self, ids: Iterable[int]) -> Iterator[str]:
-        logger.info("Creating MAST HTTP URLs")
+    def _create_mast_urls(self, ids: Iterable[Id]) -> Iterator[str]:
+        logger.bind(unique_ids=len(set((ids)))).info("Creating MAST HTTP URLs")
         # This produces urls like e.g:
         # https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:Kepler/url/missions/kepler/lightcurves/0008/000892376//kplr000892376-2009166043257_llc.fits
         for id_ in ids:
-            id_str = f"{id_:09d}"
+            id_str = f"{str(id_):0>9}"
             url = f"{self._mast_base_url}/{id_str[:4]}/{id_str}//kplr{id_str}"
             yield from (
                 f"{url}-{pref}_{self._cadence.value}.fits"
@@ -256,20 +283,25 @@ class KeplerDownloader:
             )
 
     def _filter_urls(self, urls: Iterable[str]) -> list[str]:
-        processed_urls = set(self._meta_path.read_text().splitlines())
+        logger.info("Filtering URLs")
+        processed_urls = set(self._checkpoint_filepath.read_text().splitlines())
         if processed_urls:
-            meta_path = self._meta_path.as_posix()
-            logger.info("Metadata file detected. Skip URLs from this file", path=meta_path)
+            meta_path = self._checkpoint_filepath.as_posix()
+            logger.info(
+                "Checkpoint file detected",
+                path=meta_path,
+                processed_urls=len(processed_urls),
+            )
         return list(set(urls) - processed_urls)
 
     def _save_meta(self, urls: list[str]) -> None:
-        if urls:
-            text = "\n".join(urls) + "\n"
-            filepath = self._meta_path.as_posix()
-            with open(filepath, mode="a") as f:
-                f.write(text)
-            logger.debug("Metadata file saved", number_of_urls=len(urls), path=filepath)
+        text = "\n".join(urls) + "\n"
+        filepath = self._checkpoint_filepath.as_posix()
+        with open(filepath, mode="a") as f:
+            f.write(text)
 
-    def _url_batches(self, urls: list[str]) -> Iterator[Iterable[str]]:
-        logger.debug("Creating URLs batches", batch_size=self._num_tasks)
-        yield from (urls[n : n + self._num_tasks] for n in range(0, len(urls), self._num_tasks))
+    def _url_batches(self, urls: list[str]) -> Iterator[list[str]]:
+        yield from (
+            urls[n : n + self._num_async_requests]
+            for n in range(0, len(urls), self._num_async_requests)
+        )
