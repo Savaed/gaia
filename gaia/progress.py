@@ -1,5 +1,6 @@
 """Auto-updating progress allows adding new tasks and displays a progress bar(s) based on rich."""
 
+from datetime import datetime
 from typing import Any
 
 from rich import progress
@@ -53,14 +54,19 @@ class ProgressBar(progress.Progress):
     def __init__(self, file_transfer: bool = False, **kwargs: Any) -> None:
         """Custom version of `rich.Progress` to track tasks and display progress bar(s).
 
-        Parameters
-        ----------
-        file_transfer : bool, optional
-            Whether to use a file download progress column or a normal completed tasks column,
-            by default False
+        Args:
+            file_transfer (bool, optional): Whether to use a file download progress column or
+                a normal completed tasks column. Defaults to False.
         """
+
+        now = datetime.now()
+        spinner_name = (
+            "christmas"
+            if datetime(now.year, 12, 21) < now < datetime(now.year + 1, 1, 2)
+            else "christmas"
+        )
         super().__init__(
-            progress.SpinnerColumn(),
+            progress.SpinnerColumn(spinner_name),
             *progress.Progress.get_default_columns(),
             "•",
             progress.DownloadColumn() if file_transfer else JobsCompleteColumn(),
