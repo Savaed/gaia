@@ -1,4 +1,9 @@
+import asyncio
+import copy
+import re
+from contextlib import suppress
 from pathlib import Path
+from unittest.mock import Mock
 
 import duckdb
 import numpy as np
@@ -6,8 +11,10 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from gaia.data.converters import (
+    ConverterError,
     CsvConverter,
     FitsConverter,
+    FitsConvertingOutputFormat,
     FitsConvertingSettings,
     UnsupportedFileFormatError,
 )
@@ -202,293 +209,263 @@ def test_csv_converter_convert__convert_multiple_files_correctly(
 
 
 @pytest.fixture
-def mock_read_fits(mocker):
-    """Factory function to mock `gaia.io.read_fits()` to return a FITS file (meta)data."""
-
-    def _mock(read_return_values):
-        return mocker.patch("gaia.data.converters.read_fits", side_effect=read_return_values)
-
-    return _mock
+def fits_convert_settings():
+    """Return FITS converting settings."""
+    return FitsConvertingSettings(
+        data_header="TEST_HDU",
+        data_columns=("col1", "col2"),
+        meta_columns=("meta1", "meta2"),
+        names_map=dict(col1="column1"),
+        output_format=FitsConvertingOutputFormat.PARQUET,
+    )
 
 
 @pytest.fixture
-def create_converter(tmp_path):
-    """Factory function to create an instance of `FitsConverter`.
+def create_fits_converter(tmp_path):
+    """Factory function to create an instance of `FitsConverter`."""
 
-    This assigns meta and buffer files to temporary paths so they are removed after tests.
-    """
-
-    def _create(config):
-        converter = FitsConverter(config)
-        base_dir = tmp_path / "FitsConverter"
-        base_dir.mkdir()
-        converter._checkpoint_filepath = base_dir / "test_checkpoint.txt"
-        converter._buffer_filepath = base_dir / "test_buffer.json"
+    def create(settings):
+        converter = FitsConverter(settings)
+        converter._checkpoint_filepath = tmp_path / "test_FitsConverter_checkpoint.txt"
+        converter._tmp_time_series_path = tmp_path / "test_FitsConverter_buffer.json"
         return converter
 
-    return _create
+    return create
 
 
 @pytest.fixture
-def converter(create_converter):
-    """Return basic `FitsConverter` instance."""
-    config = FitsConvertingSettings(
-        data_header="TEST_DATA_HDU",
-        data_columns=None,
-        meta_columns=None,
-        names_map=None,
-        rotation_bytes=2 * 1024 * 1024 * 1024,  # 2BG
-        num_async_readers=1,  # Read sequentially
-    )
-    return create_converter(config)
+def fits_converter(fits_convert_settings, create_fits_converter):
+    """Return an instance of `FitsConverter`."""
+    return create_fits_converter(fits_convert_settings)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("inputs", ["file.fits", Path("file.fits"), "dir/file*.fits"])
-async def test_fits_converter_convert__files_not_found(inputs, mock_glob, converter):
-    """Test that `FileNotFoundError` is raised when no FITS file(s) was found."""
-    mock_glob([[]])
+async def test_fits_converter_convert__input_file_not_found(fits_converter, tmp_path):
+    """Test that `FileNotFoundError` is raised when input is a single, not existing file."""
+    input_filepath = Mock(spec=Path, **{"exists.return_value": False})
     with pytest.raises(FileNotFoundError):
-        await converter.convert(inputs, Path("file.json"))
+        await fits_converter.convert(input_filepath, tmp_path, re.compile(".*"))
+
+
+@pytest.fixture
+def fits_files(tmp_path):
+    """Prepare FITS time series empty files and return a path to their parent directory."""
+    for file in ("target_id_1.fits", "target_id_2.fits"):
+        (tmp_path / file).touch()
+
+    return tmp_path
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("inputs", [Path("file.txt"), "file.txt", "dir/*.txt"])
-async def test_fits_converter_convert__unsupported_input_files(inputs, mock_glob, converter):
-    """Test that `ValueError` is raised when any of input files has unsupported file format."""
-    mock_glob([[str(inputs)]])
-    with pytest.raises(UnsupportedFileFormatError):
-        await converter.convert(inputs, Path("file.json"))
+async def test_fits_converter_convert__cannot_retrieve_target_id_from_file_paths(
+    fits_files,
+    mocker,
+    fits_converter,
+    tmp_path,
+):
+    """Test that input files are skiped when cannot retrieve target id from theirs paths."""
+    read_fits_mock = mocker.patch("gaia.data.converters.read_fits")
+    inputs = f"{fits_files}/*.fits"
 
-
-@pytest.mark.asyncio
-async def test_fits_converter_convert__unsupported_output_file(converter):
-    """Test that `ValueError` is raised when the output file is not supported."""
-    with pytest.raises(UnsupportedFileFormatError):
-        await converter.convert("file.fits", Path("file.txt"))
-
-
-TEST_FITS_DATA = {
-    "data_column1": np.array([1, 2, 3]),
-    "data_column2": np.array([4.0, 5.0, 6.0]),
-    "META_COLUMN1": "metadata1",
-    "META_COLUMN2": 1.2,
-}
+    # The correct regex is '(?<=id_)\d*'
+    await fits_converter.convert(inputs, tmp_path, re.compile("(?<=kplr).*"))
+    read_fits_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "data_columns,meta_columns",
-    [
-        (["data_column1", "missing_data_column"], ["META_COLUMN1", "META_COLUMN2"]),
-        (["data_column1", "data_column2"], ["META_COLUMN1", "MISSING_META_COLUMN"]),
-        (["data_column1", "missing_data_column"], ["META_COLUMN1", "MISSING_META_COLUMN"]),
-    ],
-    ids=["in_data", "in_metadata", "both"],
+    "read_error",
+    [OSError, KeyError],
+    ids=["invalid_file", "invalid_header/columns"],
 )
-async def test_fits_converter_convert__missing_column(
-    data_columns,
-    meta_columns,
-    mock_glob,
-    mock_read_fits,
-    converter,
+async def test_fits_converter_convert__cannot_read_fits_file(
+    read_error,
+    fits_files,
+    mocker,
+    fits_converter,
+    tmp_path,
 ):
-    """Test that `KeyError` is raised when no data/metadata column found in FITS read file."""
-    filepath = "file.fits"
-    mock_glob([[filepath]])
-    mock_read_fits(KeyError)
-    converter._config.data_columns = data_columns
-    converter._config.meta_columns = meta_columns
-    with pytest.raises(KeyError):
-        await converter.convert(filepath, Path("file.json"))
+    """Test that `ConverterError` is raised when cannot read a FITS input file."""
+    mocker.patch("gaia.data.converters.read_fits", side_effect=read_error)
+    inputs = f"{fits_files}/*.fits"
+    with pytest.raises(ConverterError):
+        await fits_converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+
+
+TEST_FITS_TIME_SERIES = {
+    "col1": np.array([1.0, 2.0, 3.0]),
+    "col2": np.array([4.0, np.nan, 6.0]),
+    "meta1": 1,
+    "meta2": "test",
+}
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("meta_columns", [None, {"META_COLUMN1"}, {"META_COLUMN1", "META_COLUMN2"}])
-@pytest.mark.parametrize("data_columns", [None, {"data_column1"}, {"data_column1", "data_column2"}])
-async def test_fits_converter_convert__read_only_specified_columns(
-    data_columns,
-    meta_columns,
-    mock_glob,
-    mock_read_fits,
+async def test_fits_converter_convert__cannot_save_output_file(
+    fits_files,
+    mocker,
+    fits_converter,
     tmp_path,
-    converter,
 ):
-    """Test that only specified columns are read from a FITS file."""
-    filepath = "file.fits"
-    mock_glob([[filepath]])
-    read_mock = mock_read_fits([TEST_FITS_DATA])
-    converter._config.data_columns = data_columns
-    converter._config.meta_columns = meta_columns
-    await converter.convert(filepath, tmp_path / "file.json")
-    read_mock.assert_called_with(
-        Path(filepath),
-        converter._config.data_header,
+    """Test that `ConverterError` is raised when cannot save converted output file."""
+    mocker.patch("gaia.data.converters.read_fits", return_value=TEST_FITS_TIME_SERIES)
+    mocker.patch("gaia.data.converters.duckdb.execute", side_effect=duckdb.IOException)
+    inputs = f"{fits_files}/*1.fits"
+    with pytest.raises(ConverterError):
+        await fits_converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+
+
+@pytest.mark.asyncio
+async def test_fits_converter_convert__resume_converting(
+    fits_files,
+    mocker,
+    fits_converter,
+    tmp_path,
+):
+    """Test that the next conversion after a failure will not convert already converted files."""
+    mocker.patch(
+        "gaia.data.converters.read_fits",
+        side_effect=[TEST_FITS_TIME_SERIES, KeyError, TEST_FITS_TIME_SERIES],
+    )
+    duckdb_mock = mocker.patch("gaia.data.converters.duckdb.execute")
+    inputs = f"{fits_files}/*.fits"
+
+    with suppress(Exception):  # Don't care about this error
+        await fits_converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+
+    await fits_converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+
+    # Expected call count: 2 for the first file and 2 for the second. If the checkpoint mechanism
+    # didn't work, it will be 6 calls (2 for the first file and after the failure 2 for the first
+    # file [again] and 2 for the second).
+    assert duckdb_mock.call_count == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("data_columns", [None, {"col1", "col2"}])
+@pytest.mark.parametrize("meta_columns", [None, {"meta1", "meta2"}])
+async def test_fits_converter_convert__read_only_specific_columns(
+    meta_columns,
+    data_columns,
+    mocker,
+    fits_files,
+    tmp_path,
+    create_fits_converter,
+):
+    """Test that only specified data/meta columns are read from FITS files."""
+    read_fits_mock = mocker.patch(
+        "gaia.data.converters.read_fits",
+        return_value=TEST_FITS_TIME_SERIES,
+    )
+
+    settings = FitsConvertingSettings(
+        data_columns=data_columns,
+        data_header="TEST_HDU",
+        meta_columns=meta_columns,
+        names_map=None,
+        output_format=FitsConvertingOutputFormat.PARQUET,
+    )
+    converter = create_fits_converter(settings)
+    inputs = f"{fits_files}/*1.fits"
+    await converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+    read_fits_mock.assert_called_once_with(
+        fits_files / "target_id_1.fits",
+        "TEST_HDU",
         data_columns,
         meta_columns,
     )
 
 
-@pytest.fixture
-def create_output_files(tmp_path):
-    """Factory function to cerate test output files for `FitsConverter.convert()`."""
-
-    def _mock(outputs):
-        for existent_output in outputs:
-            (tmp_path / existent_output).touch()
-
-        return tmp_path / "file.json"
-
-    return _mock
-
-
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "existent_outputs,expected",
-    [
-        ({}, {"file.json", "file-1.json"}),
-        ({"file.json"}, {"file.json", "file-1.json", "file-2.json"}),
-        ({"file.json", "file-1.json"}, {"file.json", "file-1.json", "file-2.json", "file-3.json"}),
-    ],
-    ids=["no_file", "one_file_without_prefix", "several_files_one_with_prefix"],
-)
-async def test_fits_converter_convert__output_files_rotation(
-    existent_outputs,
-    expected,
-    mock_glob,
-    mock_read_fits,
-    create_output_files,
-    converter,
-):
-    """Test that output files are wrote with correct suffix if any suffix needed."""
-    mock_glob([["file1.fits", "file2.fits"]])  # Read 2 files
-    mock_read_fits([TEST_FITS_DATA, TEST_FITS_DATA])
-    output_path = create_output_files(existent_outputs)
-    converter._config.rotation_bytes = 0  # Save a single output for each input files batch
-    await converter.convert("file*.fits", output_path)
-
-    # Skip directory which includes test meta and buffer files
-    actual = {path for path in output_path.parent.iterdir() if path.is_file()}
-    expected_absolute_paths = {output_path.parent / filename for filename in expected}
-    assert actual == expected_absolute_paths
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "columns_map,expected",
-    [
-        (
-            {"data_column1": "col1", "META_COLUMN1": "meta1"},
-            {"col1", "data_column2", "meta1", "META_COLUMN2"},
-        ),
-        (
-            None,
-            {"data_column1", "data_column2", "META_COLUMN1", "META_COLUMN2"},
-        ),
-        (
-            {},
-            {"data_column1", "data_column2", "META_COLUMN1", "META_COLUMN2"},
-        ),
-        (
-            {"data_column1": "col1", "abc": "ABC"},
-            {"col1", "data_column2", "META_COLUMN1", "META_COLUMN2"},
-        ),
-    ],
-    ids=["rename_several_columns", "no_renaming", "no_renaming", "skip_not_existent_column"],
-)
+@pytest.mark.parametrize("output_format", iter(FitsConvertingOutputFormat))
 async def test_fits_converter_convert__rename_columns(
-    columns_map,
-    expected,
-    mock_glob,
-    mock_read_fits,
+    output_format,
+    mocker,
+    fits_files,
     tmp_path,
-    converter,
+    create_fits_converter,
+    fits_convert_settings,
 ):
-    """Test that columns are renamed correctly."""
-    filepath = "file.fits"
-    output = tmp_path / "file.json"
-    mock_glob([[filepath]])
-    mock_read_fits([TEST_FITS_DATA])
-    converter._config.names_map = columns_map
-    await converter.convert(filepath, output)
-    actual = duckdb.sql(f"SELECT * FROM '{output}' LIMIT 1;").columns
-    assert set(actual) == expected
+    """Test that data/meta columns are renaming if requried."""
+    mocker.patch("gaia.data.converters.read_fits", return_value=TEST_FITS_TIME_SERIES)
+    settings = copy.copy(fits_convert_settings)
+    settings.output_format = output_format
+    converter = create_fits_converter(settings)
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("output", ["file.json", "file.parquet"])
-async def test_fits_converter_convert__skip_already_processed_files_after_error(
-    output,
-    mock_glob,
-    mock_read_fits,
-    tmp_path,
-    converter,
-):
-    """Test that the already processed files are not reprocessed after resuming the work after
-    interrupting the conversion.
-    """
-    # We want convert file 'file1.fits' and 'file2.fits', but when first read 'file2.fits' an error
-    # occured. So we start converting again, but the first attempt to read raise an error.
-    # In this scenario at the third converting process only 'file2.fits' should be read as '
-    # file1.fits' was succeffuly processed on our first converting process.
-    # 2 errors is to ensure that
-    mock_glob(
-        [
-            ["file1.fits", "file2.fits", "file3.fits"],
-            ["file1.fits", "file2.fits", "file3.fits"],
-            ["file1.fits", "file2.fits", "file3.fits"],
-        ],
+    # Data from `read_fits()` has columns: ['column1', 'col2', 'meta1', 'meta2']
+    # and rename_map is 'col1' -> 'column1'.
+    expected = create_df(
+        (
+            ["column1", "col2", "meta1", "meta2"],
+            [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],
+        ),
     )
-    mock_read_fits([TEST_FITS_DATA, KeyError, TEST_FITS_DATA, KeyError, TEST_FITS_DATA])
-    output_path = tmp_path / output
-
-    try:
-        await converter.convert("file.fits", output_path)
-    except KeyError:
-        # Skip to next converting process
-        pass
-
-    try:
-        await converter.convert("file.fits", output_path)
-    except KeyError:
-        # Skip to next converting process
-        pass
-
-    await converter.convert("file.fits", output_path)
-    actual = duckdb.sql(f"SELECT * FROM '{output_path}';").df().sort_index(axis=1)  # Sort columns
-    expected = create_df(
-        (
-            TEST_FITS_DATA.keys(),
-            TEST_FITS_DATA.values(),
-            TEST_FITS_DATA.values(),
-            TEST_FITS_DATA.values(),
-        ),
-    ).sort_index(
-        axis=1,
-    )  # Sort columns
-    assert_frame_equal(actual, expected)
+    inputs = f"{fits_files}/*1.fits"
+    await converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+    actual = duckdb.sql(f"FROM '{tmp_path / f'1.{output_format.value}'}';").df()
+    assert_frame_equal(actual, expected, check_dtype=False)
 
 
 @pytest.mark.asyncio
-async def test_fits_converter_convert__save_ramaining_buffer_on_exit(
-    mock_glob,
-    mock_read_fits,
-    converter,
+@pytest.mark.parametrize("output_format", iter(FitsConvertingOutputFormat))
+async def test_fits_converter_convert__group_inputs_for_single_target_id(
+    output_format,
+    mocker,
     tmp_path,
+    create_fits_converter,
+    fits_convert_settings,
 ):
-    """Test that ."""
-    filepath = "file.fits"
-    mock_glob([[filepath]])
-    mock_read_fits([TEST_FITS_DATA])
-    output = tmp_path / "file.json"
+    """Test that input files related to the same `target_id` are saved as a single output file."""
+    mocker.patch("gaia.data.converters.read_fits", side_effect=[TEST_FITS_TIME_SERIES] * 2)
+
+    for filepath in ("first_target_id_1.fits", "second_target_id_1.fits"):
+        (tmp_path / filepath).touch()
+
+    settings = copy.copy(fits_convert_settings)
+    settings.output_format = output_format
+    converter = create_fits_converter(settings)
+
     expected = create_df(
         (
-            TEST_FITS_DATA.keys(),
-            TEST_FITS_DATA.values(),
+            ["column1", "col2", "meta1", "meta2"],
+            [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],  # Data from 'first_target_id_1.fits'
+            [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],  # Data from 'second_target_id_1.fits'
         ),
-    ).sort_index(
-        axis=1,
-    )  # Sort columns
-    await converter.convert(filepath, output)
-    actual = duckdb.sql(f"FROM '{output}';").df().sort_index(axis=1)  # Sort columns
-    assert_frame_equal(actual, expected)
+    )
+    inputs = f"{tmp_path}/*.fits"
+    await converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+    actual = duckdb.sql(f"FROM '{tmp_path / f'1.{output_format.value}'}';").df()
+    assert_frame_equal(actual, expected, check_dtype=False)
+
+
+@pytest.mark.asyncio
+async def test_fits_converter_convert__cancel_reading(mocker, fits_files, fits_converter, tmp_path):
+    """Test that all reading tasks are gracefully cancelled and `CancelledError` is raised."""
+    mocker.patch("gaia.data.converters.read_fits", side_effect=asyncio.CancelledError)
+    inputs = f"{fits_files}/*.fits"
+    with pytest.raises(asyncio.CancelledError):
+        await fits_converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+
+
+@pytest.fixture(params=[True, False], ids=["dir_exists", "dir_not_exists"])
+def output_dir(request, tmp_path):
+    """Return existent and not existent directory ."""
+    if request.param:
+        return tmp_path
+    return tmp_path / "sdfsdfsd/"
+
+
+@pytest.mark.asyncio
+async def test_fits_converter_convert__create_output_dir_if_not_exist(
+    output_dir,
+    fits_converter,
+    fits_files,
+    mocker,
+):
+    """Test that the output directory is created if not exist."""
+    mocker.patch("gaia.data.converters.read_fits")
+    mocker.patch("gaia.data.converters.duckdb.execute")
+
+    inputs = f"{fits_files}/*.fits"
+    await fits_converter.convert(inputs, output_dir, re.compile(r"(?<=id_)\d*"))
+    assert output_dir.is_dir()
