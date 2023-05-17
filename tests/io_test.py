@@ -1,13 +1,22 @@
 import json
+import re
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pytest
 from astropy.io.fits.column import Column
 from astropy.io.fits.fitsrec import FITS_rec
 from astropy.io.fits.header import Header
 
-from gaia.io import FileSaver, JsonNumpyEncoder, read_fits
+from gaia.io import (
+    DataNotFoundError,
+    FileSaver,
+    JsonNumpyEncoder,
+    ParquetReader,
+    ReaderError,
+    read_fits,
+)
 from tests.conftest import assert_dict_with_numpy_equal
 
 
@@ -184,3 +193,63 @@ def test_json_numpy_decoder__decode_object(obj, expected):
     """Test that encoding object without numpy array is correct."""
     actual = json.dumps(obj, cls=JsonNumpyEncoder)
     assert actual == expected
+
+
+@pytest.fixture
+def parquet_file(tmp_path):
+    """Prepare test parquet file and return a path to their parent directory."""
+    connection = duckdb.connect(":memory:")
+    connection.sql("CREATE TABLE t (A INT, B VARCHAR, C DOUBLE[]);")
+    connection.sql(
+        "INSERT INTO t VALUES (1, 'data1', [1.0, 2.0, 3.0]), (2, 'data2', [4.0, 5.0, 6.0]);",
+    )
+    connection.sql(f"COPY t TO '{tmp_path / '1.parquet'}';")
+    return tmp_path
+
+
+def test_parquet_reader_read_by_id__file_not_found(tmp_path):
+    """Test that `FileNotFoundError` is raised when file for specific ID was not found."""
+    reader = ParquetReader(tmp_path)
+    with pytest.raises(DataNotFoundError):
+        reader.read_by_id(1)
+
+
+@pytest.mark.parametrize("read_error", [duckdb.IOException, duckdb.InvalidInputException])
+def test_parquet_reader_read_by_id__cannot_read_file(read_error, parquet_file, mocker):
+    """Test that `ReaderError` is raised when a file cannot be read."""
+    mocker.patch("gaia.io.duckdb.sql", side_effect=read_error)
+    reader = ParquetReader(parquet_file)
+    with pytest.raises(ReaderError):
+        reader.read_by_id(1)
+
+
+@pytest.mark.parametrize(
+    "id_pattern",
+    [None, re.compile(r"\d*(?=\.parquet)")],
+    ids=["id_as_filename", "id_as_regex"],
+)
+@pytest.mark.parametrize(
+    "columns,expected",
+    [
+        (None, [dict(A=1, B="data1", C=[1.0, 2.0, 3.0]), dict(A=2, B="data2", C=[4.0, 5.0, 6.0])]),
+        (("A",), [dict(A=1), dict(A=2)]),
+        (
+            ("A", "B", "C"),
+            [dict(A=1, B="data1", C=[1.0, 2.0, 3.0]), dict(A=2, B="data2", C=[4.0, 5.0, 6.0])],
+        ),
+    ],
+    ids=["all_columns_by_default", "specific_column", "specific_columns"],
+)
+def test_parquet_reader_read_by_id__read(columns, expected, id_pattern, parquet_file):
+    """Test that file is read correctly."""
+    reader = ParquetReader(parquet_file, id_pattern, columns)
+    actual = reader.read_by_id(1)
+    assert actual == expected
+
+
+def test_parquet_reader_read_by_id__cannot_retrieve_id_from_path(tmp_path):
+    """Test that `DataNotFoundError` is raised when ID could not be retrieved from the filepath."""
+    (tmp_path / "abc.parquet").touch()  # A valid file for id=1 should be named '1.parquet'
+    reader = ParquetReader(tmp_path, re.compile(r".*(?<=file)"))  # ID=everything before 'file' text
+    with pytest.raises(DataNotFoundError):
+        reader.read_by_id(1)

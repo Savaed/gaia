@@ -1,11 +1,21 @@
 import json
 from pathlib import Path
-from typing import Any, Collection, Protocol, TypeAlias
+from typing import Any, Collection, Iterable, Pattern, Protocol, TypeAlias
 
+import duckdb
 import numpy as np
 from astropy.io import fits
 
-from gaia.data.models import Series
+from gaia.data.models import Id, Series
+from gaia.log import logger
+
+
+class DataNotFoundError(Exception):
+    """Raised when the requested data was not found."""
+
+
+class ReaderError(Exception):
+    """Raised when the resource cannot be read."""
 
 
 class Saver(Protocol):
@@ -76,8 +86,90 @@ def read_fits(
 
 
 class JsonNumpyEncoder(json.JSONEncoder):
+    """Json encoder to serialize numpy arrays."""
+
     def default(self, obj: Any) -> Any:
         if isinstance(obj, np.ndarray):
             return obj.tolist()
 
         return super().default(obj)  # pragma: no cover
+
+
+class ByIdReader(Protocol):
+    def read_by_id(self, id: Id) -> list[dict[str, Any]]:
+        ...
+
+
+class ParquetReader:
+    """Reader that allows reading a parquet file based on identifier contained in the file path."""
+
+    def __init__(
+        self,
+        data_dir: Path,
+        id_path_pattern: Pattern[str] | None = None,
+        columns: Iterable[str] | None = None,
+    ) -> None:
+        self._data_dir = data_dir
+        self._id_pattern = id_path_pattern
+        self._columns = set(columns) if columns else set()
+
+        self._paths = self._get_paths(data_dir, id_path_pattern)
+
+    def read_by_id(self, id: Id) -> list[dict[str, Any]]:
+        """Read the parquet file that contains the ID in the file path.
+
+        Args:
+            id (Id): Data identifier. Must be present in the file path
+
+        Raises:
+            DataNotFoundError: No data (file) found for the specified ID
+            ReaderError: Unable to read parquet file (corrupted file/permission denied etc.)
+
+        Returns:
+            list[dict[str, Any]]: List of records contained in the file
+        """
+        try:
+            source_path = self._paths[str(id)]
+        except KeyError:
+            raise DataNotFoundError(f"No parquet file for {id=} found")
+
+        try:
+            raw_results = duckdb.sql(f"FROM '{source_path}';").df().to_dict("records")
+        except Exception as ex:
+            raise ReaderError(ex)
+
+        results: list[dict[str, Any]] = []
+
+        if self._columns:
+            for result in raw_results:
+                filtered_result = {
+                    key: value for key, value in result.items() if key in self._columns
+                }
+                results.append(filtered_result)
+            # `list(self._columns)` because of loguru bug. See comment in gaia/log.py in
+            # format_key_value_context()
+            logger.bind(id=id, columns=list(self._columns)).info("Parquet file filtered")
+        else:
+            results = raw_results
+
+        return results
+
+    def _get_paths(self, data_dir: Path, id_path_pattern: Pattern[str] | None) -> dict[str, Path]:
+        paths: dict[str, Path] = {}
+        log = logger.bind(id_pattern=id_path_pattern, data_dir=data_dir.as_posix())
+        log.debug("Searching parquet files")
+
+        for path in data_dir.iterdir():
+            if id_path_pattern:
+                try:
+                    id = id_path_pattern.search(path.as_posix()).group()  # type: ignore
+                except AttributeError:
+                    log.bind(path=path.as_posix()).warning("Cannot get ID from file path")
+                    continue
+            else:
+                id = path.stem
+
+            paths[id] = path
+
+        log.debug(f"{len(paths)} files found")
+        return paths
