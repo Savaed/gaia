@@ -31,6 +31,23 @@ class TceLabel(Enum):
     """
 
 
+class RawKeplerTce(TypedDict):
+    kepid: int
+    tce_plnt_num: int
+    tce_cap_stat: float
+    tce_hap_stat: float
+    boot_fap: float
+    tce_rb_tcount0: float
+    tce_prad: float
+    tcet_period: float
+    tce_depth: float
+    tce_time0bk: float
+    tce_duration: float
+    tce_period: float
+    kepler_name: str | None
+    label: str
+
+
 @dataclass
 class TCE(abc.ABC):
     """Threshold-Crossing Event.
@@ -46,31 +63,7 @@ class TCE(abc.ABC):
     duration: float
     period: float
     name: str | None
-    label_text: str | None
-    """Should be `TceLabel.name|value`.
-
-    The main purpose of this field is to facilitate the initialization of `TCE` from files and
-    databases where TCE labels are stored mostly as plain text, not an enum. For all other uses,
-    use the `TCE.label` property.
-    """
-
-    @property
-    def label(self) -> TceLabel:
-        """A label that identifies whether a TCE is a planet candidate (PC) or not.
-
-        This is derived from `TCE.label_text`. If `TCE.label_text` is not a valid
-        `TceLabel.name|value` or is None or an empty string, this returns `TceLabel.UNKNOWN`.
-        """
-        if not self.label_text:
-            return TceLabel.UNKNOWN
-
-        try:
-            return TceLabel(self.label_text)
-        except ValueError:
-            try:
-                return TceLabel[self.label_text]
-            except KeyError:
-                return TceLabel.UNKNOWN
+    label: TceLabel
 
     @property
     def event(self) -> PeriodicEvent:
@@ -95,6 +88,16 @@ class StellarParameters(abc.ABC):
     id: Id
 
 
+class RawKeplerStellarParameter(TypedDict):
+    kepid: int
+    teff: float
+    dens: float
+    logg: float
+    feh: float
+    radius: float
+    mass: float
+
+
 @dataclass
 class KeplerStellarParameters(StellarParameters):
     effective_temperature: float
@@ -106,30 +109,26 @@ class KeplerStellarParameters(StellarParameters):
 
 
 Series: TypeAlias = npt.NDArray[np.float_]
+IntSeries: TypeAlias = npt.NDArray[np.int_]
+AnySeries: TypeAlias = npt.NDArray[np.object_]
 
 
-class TimeSeriesBase(TypedDict):
-    """Minimum time series representation."""
+class RawKeplerTimeSeries(TypedDict):
+    KEPLERID: int
+    QUARTER: int
+    TIME: list[float]
+    PDCSAP_FLUX: list[float]
+    MOM_CENTR1: list[float]
+    MOM_CENTR2: list[float]
 
+
+class TimeSeries(TypedDict):
     id: Id
+    period: int | str
     time: Series
 
 
-class PeriodicTimeSeries(TimeSeriesBase):
-    """Time series for a single observation period."""
-
-    period: int
-
-
-class TimeSeries(TimeSeriesBase):
-    """Basic time series for multiple observation periods"""
-
-    periods_mask: Series
-
-
 class KeplerTimeSeries(TimeSeries):
-    """Kepler time series for multiple observation periods."""
-
     pdcsap_flux: Series
     mom_centr1: Series
     mom_centr2: Series
