@@ -4,15 +4,21 @@ import numpy as np
 import pytest
 
 from gaia.data.mappers import MapperError
-from gaia.data.models import TimeSeries
-from gaia.data.stores import DataStoreError, MissingPeriodsError, TimeSeriesStore
-from gaia.io import ByIdReader, DataNotFoundError, ReaderError
+from gaia.data.models import StellarParameters, TimeSeries
+from gaia.data.stores import (
+    DataStoreError,
+    MissingPeriodsError,
+    StellarParametersStore,
+    StellarParametersStoreParamsSchema,
+    TimeSeriesStore,
+)
+from gaia.io import ByIdReader, DataNotFoundError, MissingColumnError, ReaderError, TableReader
 from tests.conftest import assert_dict_with_numpy_equal
 
 
 @pytest.fixture
 def time_series_reader():
-    """Return a generic time series reader mock."""
+    """Return a generic time series `ByIdReader` mock."""
     return Mock(spec=ByIdReader)
 
 
@@ -22,21 +28,17 @@ def mapper():
     return lambda source: source
 
 
-class TimeSeriesTesting(TimeSeries):
-    ...
-
-
 @pytest.fixture
 def create_time_series_store():
-    """Factory function to create `TimeSeriesStore[TimeSeriesTesting]` test object."""
+    """Factory function to create `TimeSeriesStore[TimeSeriesTesting]` object."""
 
     def create(mapper, reader):
-        return TimeSeriesStore[TimeSeriesTesting](mapper=mapper, reader=reader)
+        return TimeSeriesStore[TimeSeries](mapper=mapper, reader=reader)
 
     return create
 
 
-def test_time_series_store_get__data_not_found(
+def test_time_series_store_get__resource_not_found(
     mapper,
     time_series_reader,
     create_time_series_store,
@@ -57,8 +59,8 @@ def test_time_series_store_get__read_error(mapper, time_series_reader, create_ti
 
 
 TEST_TIME_SERIES = [
-    TimeSeriesTesting(id=1, period=1, time=np.array([1.0, 2.0, 3.0])),
-    TimeSeriesTesting(id=1, period=2, time=np.array([4.0, 5.0, 6.0])),
+    TimeSeries(id=1, period=1, time=np.array([1.0, 2.0, 3.0])),
+    TimeSeries(id=1, period=2, time=np.array([4.0, 5.0, 6.0])),
 ]
 
 
@@ -94,7 +96,7 @@ def test_time_series_store_get__missing_periods(
     [
         (None, TEST_TIME_SERIES),
         ((1, 2), TEST_TIME_SERIES),
-        ((1,), [TimeSeriesTesting(id=1, period=1, time=np.array([1.0, 2.0, 3.0]))]),
+        ((1,), [TimeSeries(id=1, period=1, time=np.array([1.0, 2.0, 3.0]))]),
     ],
     ids=["all_by_default", "all_specified", "single_specified"],
 )
@@ -111,3 +113,78 @@ def test_time_series_store_get__return_correct_data(
     actual = store.get(1, periods)
     for a, b in zip(actual, expected):
         assert_dict_with_numpy_equal(a, b)
+
+
+@pytest.fixture
+def table_reader():
+    """Return a generic `TableReader` mock."""
+    return Mock(spec=TableReader)
+
+
+@pytest.fixture
+def create_stellar_store():
+    """Factory function to create `return StellarParametersStore[StellarParameters]` object."""
+
+    def create(mapper, reader, schema=None):
+        return StellarParametersStore[StellarParameters](
+            mapper=mapper,
+            reader=reader,
+            parameters_schema=schema or StellarParametersStoreParamsSchema(id="id"),
+        )
+
+    return create
+
+
+def test_stellar_parameters_store_get__data_not_found(mapper, table_reader, create_stellar_store):
+    """Test that `DataNotFoundError` is raised when no requested stallar parameters was found."""
+    table_reader.read.return_value = []
+    store = create_stellar_store(mapper, table_reader)
+    with pytest.raises(DataNotFoundError):
+        store.get(1)
+
+
+def test_stellar_parameters_store_get__read_error(mapper, table_reader, create_stellar_store):
+    """Test that `DataStoreError` is raised when generic read error occured."""
+    table_reader.read.side_effect = ReaderError
+    store = create_stellar_store(mapper, table_reader)
+    with pytest.raises(DataStoreError):
+        store.get(1)
+
+
+def test_stellar_parameters_store_get__parameters_schema_error(
+    mapper,
+    table_reader,
+    create_stellar_store,
+):
+    """Test that `KeyError` is raised when parameters schema is invalid (e.g. column is missing)."""
+    table_reader.read.side_effect = MissingColumnError
+    store = create_stellar_store(mapper, table_reader)
+    with pytest.raises(KeyError):
+        store.get(1)
+
+
+TEST_STELLAR_PARAMETERS = [{"id": 1}]
+
+
+def test_stellar_parameters_store_get__map_error(table_reader, create_stellar_store):
+    """Test that `DataStoreError` is raised when map error occured."""
+    table_reader.read.return_value = TEST_STELLAR_PARAMETERS
+
+    def mapper(_):
+        raise MapperError
+
+    store = create_stellar_store(mapper, table_reader)
+    with pytest.raises(DataStoreError):
+        store.get(1)
+
+
+def test_stellar_parameters_store_get__return_correct_data(
+    mapper,
+    table_reader,
+    create_stellar_store,
+):
+    """Test that correct stellar parameters is returned."""
+    table_reader.read.return_value = TEST_STELLAR_PARAMETERS
+    store = create_stellar_store(mapper, table_reader)
+    actual = store.get(1)
+    assert actual == TEST_STELLAR_PARAMETERS[0]
