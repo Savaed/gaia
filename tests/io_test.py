@@ -13,7 +13,9 @@ from gaia.io import (
     DataNotFoundError,
     FileSaver,
     JsonNumpyEncoder,
+    MissingColumnError,
     ParquetReader,
+    ParquetTableReader,
     ReaderError,
     read_fits,
 )
@@ -253,3 +255,73 @@ def test_parquet_reader_read_by_id__cannot_retrieve_id_from_path(tmp_path):
     reader = ParquetReader(tmp_path, re.compile(r".*(?<=file)"))  # ID=everything before 'file' text
     with pytest.raises(DataNotFoundError):
         reader.read_by_id(1)
+
+
+def test_parquet_table_reader_read__file_not_found(tmp_path):
+    """Test that `ReaderError` is raised when no file was found."""
+    filepath = tmp_path / "file.parquet"
+    reader = ParquetTableReader(filepath)
+    with pytest.raises(ReaderError, match=filepath.as_posix()):
+        reader.read()
+
+
+def test_parquet_table_reader_read__columns_not_found(parquet_file):
+    """Test that `MissingColumnError` is raised when the requested column was not found."""
+    filepath = next(parquet_file.glob("*.parquet"))
+    reader = ParquetTableReader(filepath)
+    with pytest.raises(MissingColumnError):
+        reader.read(["A", "X"])
+
+
+@pytest.fixture(params=["corrupted_file", "permission_denied", "invalid_format"])
+def invalid_parquet(request, tmp_path):
+    """Return a path to test parquet file.
+
+    This return one of the following paths:
+      - to corrupted (empty) file,
+      - to write-only file,
+      - to file in unsupported (.txt) format.
+    """
+    path = tmp_path / "file.parquet"
+    match request.param:
+        case "corrupted_file":
+            path.touch()  # Empty file, no parquet meta
+        case "permission_denied":
+            path.touch(277)  # Write-only file, can't be read
+        case "invalid_format":  # pragma: no cover
+            path = tmp_path / "file.txt"
+            path.touch()
+
+    return path
+
+
+def test_parquet_table_reader_read__read_error(invalid_parquet):
+    """Test that `ReaderError` is raised when cannot read a file."""
+    reader = ParquetTableReader(invalid_parquet)
+    with pytest.raises(ReaderError):
+        reader.read()
+
+
+@pytest.mark.parametrize(
+    "columns,where,expected",
+    [
+        (None, "WHERE A=1", [{"A": 1, "B": "data1", "C": [1.0, 2.0, 3.0]}]),
+        (["A", "B"], "WHERE B='data2'", [{"A": 2, "B": "data2"}]),
+        (["A", "B"], None, [{"A": 1, "B": "data1"}, {"A": 2, "B": "data2"}]),
+        (
+            None,
+            None,
+            [
+                {"A": 1, "B": "data1", "C": [1.0, 2.0, 3.0]},
+                {"A": 2, "B": "data2", "C": [4.0, 5.0, 6.0]},
+            ],
+        ),
+    ],
+    ids=["where", "columns_and_where", "columns", "default"],
+)
+def test_parquet_table_reader_read__return_correct_data(columns, where, expected, parquet_file):
+    """Test that file is read correctly."""
+    filepath = next(parquet_file.glob("*.parquet"))
+    reader = ParquetTableReader(filepath)
+    actual = reader.read(columns, where)
+    assert all(a == b for a, b in zip(actual, expected))

@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any, Collection, Iterable, Pattern, Protocol, TypeAlias
 
@@ -16,6 +17,10 @@ class DataNotFoundError(Exception):
 
 class ReaderError(Exception):
     """Raised when the resource cannot be read."""
+
+
+class MissingColumnError(Exception):
+    """Raised when requested column is missing in the source."""
 
 
 class Saver(Protocol):
@@ -122,7 +127,7 @@ class ParquetReader:
             id (Id): Data identifier. Must be present in the file path
 
         Raises:
-            DataNotFoundError: No data (file) found for the specified ID
+            ResourceNotFoundError: No file found for the specified ID
             ReaderError: Unable to read parquet file (corrupted file/permission denied etc.)
 
         Returns:
@@ -173,3 +178,59 @@ class ParquetReader:
 
         log.debug(f"{len(paths)} files found")
         return paths
+
+
+class TableReader(Protocol):
+    def read(
+        self,
+        columns: Iterable[str] | None = None,
+        where_sql: str | None = None,
+    ) -> list[dict[str, Any]]:
+        ...
+
+
+class ParquetTableReader:
+    """Parquet table file reader with SQL-like data filtering."""
+
+    def __init__(self, filepath: Path | str) -> None:
+        self._connection = duckdb.connect(":memory:")
+        self._filepath = Path(filepath)
+
+    def read(
+        self,
+        columns: Iterable[str] | None = None,
+        where_sql: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read a parquet table file.
+
+        Args:
+            columns (Iterable[str] | None, optional): Table columns to read. If None or empty then
+                read all available columns. Defaults to None.
+            where_sql (str | None, optional): SQL-like query to filter read records. Must start with
+                'WHERE' statement. Defaults to None.
+
+        Raises:
+            MissingColumnError: Column(s) not found in the source file
+            ReaderError: Unable to read a file (e.g. corrupted file/file not found)
+
+        Returns:
+            list[dict[str, Any]]: Records that match the `where_sql` condition with the specified
+                columns read from the source file
+        """
+        if not self._filepath.is_file():
+            raise ReaderError(f"No file {self._filepath} found")
+
+        columns_sql = ", ".join(columns) if columns else "*"
+        sql = f"SELECT {columns_sql} FROM read_parquet('{self._filepath}') {where_sql or ''};"
+        try:
+            results: list[dict[str, Any]] = self._connection.sql(sql).df().to_dict("records")
+        except duckdb.BinderException as ex:
+            raise MissingColumnError(get_duckdb_missing_column(ex))
+        except Exception as ex:
+            raise ReaderError(ex)
+
+        return results
+
+
+def get_duckdb_missing_column(ex: duckdb.BinderException) -> str:
+    return re.search('".*"', str(ex)).group().strip("")  # type: ignore
