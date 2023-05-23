@@ -59,15 +59,9 @@ class TCE(abc.ABC):
 
     id: Id
     target_id: Id
-    epoch: float
-    duration: float
-    period: float
     name: str | None
     label: TceLabel
-
-    @property
-    def event(self) -> PeriodicEvent:
-        return PeriodicEvent(self.epoch, self.duration, self.period)
+    event: PeriodicEvent
 
 
 @dataclass
