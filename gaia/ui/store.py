@@ -5,11 +5,18 @@ from typing import Any, TypedDict
 
 import fakeredis
 
-from gaia.data.models import TCE, Series, StellarParameters, TimeSeries
+from gaia.data.models import (
+    TCE,
+    AnySeries,
+    IntSeries,
+    Series,
+    StellarParameters,
+    TimeSeries,
+)
 from gaia.log import logger
 
 
-class DataStoreError(Exception):
+class SerializationError(Exception):
     """Raised when cannot serialize/deserialize or save/load value from the store."""
 
 
@@ -24,7 +31,7 @@ class RedisStore:
             data (any): data to serialize
 
         Raises:
-            DataStoreError: Unable to serialized data
+            SerializationError: Unable to serialized data
 
         Returns:
             str: SHA256 hash under which the data is saved
@@ -32,7 +39,7 @@ class RedisStore:
         try:
             pickled_data = pickle.dumps(data)
         except (pickle.PicklingError, RecursionError) as ex:
-            raise DataStoreError(f"Cannot serialize data. {ex}")
+            raise SerializationError(f"Cannot serialize data. {ex}")
 
         serialized_data = gzip.compress(pickled_data)
         hash_key = cls._hash(serialized_data)
@@ -76,8 +83,8 @@ class GlobalStore(TypedDict):
 
 
 class AllData(TypedDict):
-    time_series: TimeSeries  # Any dict that extends this
-    tce_transits: list[str]
+    time_series: list[TimeSeries]  # Any dict that extends this
+    tce_transits: AnySeries
     tces: list[TCE]
     stellar_parameters: StellarParameters
 
@@ -87,5 +94,5 @@ class TimeSeriesAIOData(TypedDict):
     graph_name: str
     time: Series
     series: Series
-    periods_mask: Series
-    tce_transits: list[str]
+    periods_mask: IntSeries
+    tce_transits: AnySeries  # Alow strings
