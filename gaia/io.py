@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Collection, Iterable, Pattern, Protocol, TypeAlias
 
@@ -19,8 +20,11 @@ class ReaderError(Exception):
     """Raised when the resource cannot be read."""
 
 
+@dataclass
 class MissingColumnError(Exception):
     """Raised when requested column is missing in the source."""
+
+    column: str
 
 
 class Saver(Protocol):
