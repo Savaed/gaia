@@ -106,7 +106,7 @@ def plot_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, go
 
 def plot_tces_classes_distribution(distribution: dict[TceLabel, int]) -> go.Figure:
     unlabeled_count = distribution[TceLabel.UNKNOWN]
-    all_count = sum(distribution.values())
+    all_count = sum(distribution.values()) - distribution[TceLabel.FP]
     labels = [
         TceLabel.UNKNOWN.name,
         "KNOWN",
