@@ -30,7 +30,7 @@ async def download(url: str, session: aiohttp.ClientSession) -> bytes:
     """
     try:
         async with session.get(url, raise_for_status=True) as resp:
-            return await resp.read()  # type: ignore[no-any-return]
+            return await resp.read()  # type: ignore
     except aiohttp.ClientOSError as ex:
         raise ApiError(message=ex.strerror, status=ex.errno, url=url)
     except aiohttp.ClientResponseError as ex:
