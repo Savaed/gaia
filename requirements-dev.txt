@@ -152,6 +152,8 @@ pyasn1==0.4.8
     #   rsa
 pyasn1-modules==0.2.8
     # via google-auth
+pydantic==1.10.7
+    # via GAIA (pyproject.toml)
 pyerfa==2.0.0.1
     # via astropy
 pygments==2.13.0
@@ -216,7 +218,9 @@ termcolor==2.1.1
 tomli==2.0.1
     # via pytest
 typing-extensions==4.4.0
-    # via tensorflow
+    # via
+    #   pydantic
+    #   tensorflow
 urllib3==1.26.13
     # via requests
 werkzeug==2.2.2
