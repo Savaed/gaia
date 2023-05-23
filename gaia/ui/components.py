@@ -1,7 +1,4 @@
-# type: ignore
-
-
-from typing import Callable, Iterable, TypeAlias, TypedDict
+from typing import Callable, Iterable, Sequence, TypeAlias, TypedDict
 
 import numpy as np
 from dash import MATCH, Input, Output, State, callback, dcc, html
@@ -9,12 +6,13 @@ from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
 from plotly import graph_objects as go
 
-from gaia.data.models import Series
-from gaia.ui.store import PeriodicData, RedisStore, TimeSeriesAIOData
-from gaia.visualisation.plotly import plot_empty_scatter, plot_time_series
+from gaia.data.models import AnySeries, IntSeries, Series
+from gaia.log import logger
+from gaia.plotly import plot_empty_scatter, plot_time_series
+from gaia.ui.store import RedisStore, TimeSeriesAIOData
 
 
-PreprocessingFunction: TypeAlias = Callable[[tuple[PeriodicData, ...]], PeriodicData]
+PreprocessingFunction: TypeAlias = Callable[[Series], Series]
 
 
 class ComponentIds:
@@ -37,11 +35,11 @@ class DropdownOption(TypedDict):
 
 
 class _GraphData(TypedDict):
-    periods: Series
+    periods: IntSeries
     time: Series
     series: Series
-    tce_tranist_highlights: Iterable[str]  # TODO: NotRequired[Iterable[str]] in python 3.11
-    period_edges: Iterable[float]  # TODO: NotRequired[Iterable[float]] in python 3.11
+    tce_tranists: AnySeries  # TODO: NotRequired[Iterable[str]] in python 3.11
+    period_edges: Series  # TODO: NotRequired[Iterable[float]] in python 3.11
 
 
 ComponentId: TypeAlias = dict[str, str]
@@ -64,7 +62,7 @@ def switches(options: Iterable[DropdownOption], id: str | ComponentId) -> dcc.Ch
     )
 
 
-def create_pattern_matching_id(*, type_: str, index: str) -> ComponentId:
+def create_component_id(*, type_: str, index: str) -> ComponentId:
     return {"type": type_, "index": index}
 
 
@@ -100,30 +98,34 @@ class TimeSeriesAIO(html.Div):
 
     def __init__(
         self,
-        *series: PeriodicData,
-        time: PeriodicData,
-        period_edges: PeriodicData,
-        tce_transit_highlights: PeriodicData,
-        name: str,
-        id_: str,
+        series: Sequence[Series],
+        time: Sequence[Series],
+        periods_mask: IntSeries,
+        tce_transits: AnySeries,
+        graph_name: str,
+        graph_id: str,
     ) -> None:
-        periods = list(period_edges)  # Get period names
-        # Get period names for each time series value
-        period_labels = {period: [period] * len(t) for period, t in time.items()}
+        log = logger.bind(graph_id=graph_id, graph_name=graph_name)
+        log.info("Initializing time series graph component")
 
-        if preprocessing_function := self._preprocessing.get(id_):
-            preprocessed_series = preprocessing_function(series)
+        periods = list(set(periods_mask))
+
+        if preprocessing_function := self._preprocessing.get(graph_id):
+            processed_segments = [preprocessing_function(segment) for segment in series]
+
+            # `preprocessing_function` should  always return a 1D array (a flat version of `series`)
+            processed_series = np.concatenate(processed_segments)
         else:
-            preprocessed_series = series[0]
+            axis = series[0].ndim - 1  # For 1D `series` concatenate axis=0, for 2D axis=1, etc.
+            processed_series = np.concatenate(series, axis)
 
         data = TimeSeriesAIOData(
-            name=name,
-            id_=id_,
-            time=time,
-            series=preprocessed_series,
-            period_edges=period_edges,
-            periods_labels=period_labels,
-            tce_transits=tce_transit_highlights,
+            graph_id=graph_id,
+            graph_name=graph_name,
+            series=processed_series,
+            time=np.concatenate(time),
+            periods_mask=periods_mask,
+            tce_transits=tce_transits,
         )
         hash_key = RedisStore.save(data)
 
@@ -132,10 +134,10 @@ class TimeSeriesAIO(html.Div):
 
         header = html.Div(
             [
-                html.H2(name),
+                html.H2(graph_name),
                 html.I(
                     className="fa-solid fa-xmark time-series-remove",
-                    id=self.ids.close(id_),
+                    id=self.ids.close(graph_id),
                 ),
             ],
             className="time-series-graph-header",
@@ -151,9 +153,9 @@ class TimeSeriesAIO(html.Div):
                                 value=self._HIGHLIGHT_PERIOD_EDGES,
                             ),
                         ],
-                        id=create_pattern_matching_id(
+                        id=create_component_id(
                             type_=ComponentIds.TIME_SERIES_GRAPH_OPTIONS,
-                            index=id_,
+                            index=graph_id,
                         ),
                     ),
                     className="time-series-graph-switches",
@@ -165,9 +167,9 @@ class TimeSeriesAIO(html.Div):
                             multi=True,
                             value=periods,
                             placeholder="Select observation periods",
-                            id=create_pattern_matching_id(
+                            id=create_component_id(
                                 type_=ComponentIds.TIME_SERIES_PERIODS_DROPDOWN,
-                                index=id_,
+                                index=graph_id,
                             ),
                         ),
                     ],
@@ -179,21 +181,22 @@ class TimeSeriesAIO(html.Div):
             dcc.Loading(
                 dcc.Graph(
                     figure=graph,
-                    id=create_pattern_matching_id(type_=ComponentIds.TIME_SERIES_CHART, index=id_),
+                    id=create_component_id(type_=ComponentIds.TIME_SERIES_CHART, index=graph_id),
                 ),
             ),
             className="time-series-graph",
         )
         store = dcc.Store(
-            id=create_pattern_matching_id(type_=ComponentIds.TIME_SERIES_AIO_STORE, index=id_),
+            id=create_component_id(type_=ComponentIds.TIME_SERIES_AIO_STORE, index=graph_id),
             data=hash_key,
         )
 
         super().__init__(
-            id=id_,
+            id=graph_id,
             children=html.Div([header, settings, graph_container, store]),
             className="time-series-graph-container",
         )
+        log.info("Graph component initialized")
 
     @classmethod
     def add_preprocessing(cls, key: str, fn: PreprocessingFunction) -> None:
@@ -202,26 +205,26 @@ class TimeSeriesAIO(html.Div):
     @staticmethod
     @callback(
         Output(
-            create_pattern_matching_id(type_=ComponentIds.TIME_SERIES_CHART, index=MATCH),
+            create_component_id(type_=ComponentIds.TIME_SERIES_CHART, index=MATCH),
             "figure",
         ),
         [
             Input(
-                create_pattern_matching_id(
+                create_component_id(
                     type_=ComponentIds.TIME_SERIES_GRAPH_OPTIONS,
                     index=MATCH,
                 ),
                 "value",
             ),
             Input(
-                create_pattern_matching_id(
+                create_component_id(
                     type_=ComponentIds.TIME_SERIES_PERIODS_DROPDOWN,
                     index=MATCH,
                 ),
                 "value",
             ),
             State(
-                create_pattern_matching_id(type_=ComponentIds.TIME_SERIES_AIO_STORE, index=MATCH),
+                create_component_id(type_=ComponentIds.TIME_SERIES_AIO_STORE, index=MATCH),
                 "data",
             ),
         ],
@@ -232,6 +235,8 @@ class TimeSeriesAIO(html.Div):
         selected_periods: list[str],
         data_key: str,
     ) -> go.Figure:
+        logger.info("Updating time series graph")
+
         if not all([selected_periods, data_key]):
             return plot_empty_scatter()
 
@@ -241,6 +246,7 @@ class TimeSeriesAIO(html.Div):
         try:
             data: TimeSeriesAIOData = RedisStore.load(data_key)
         except KeyError:
+            logger.bind(data_key=data_key).warning("Loading data from Redis failed")
             raise PreventUpdate
 
         return TimeSeriesAIO._create_graph(data, selected_periods, highlight_tces, show_edges)
@@ -251,16 +257,18 @@ class TimeSeriesAIO(html.Div):
         selected_periods: list[str],
         highlight_tces: bool,
         show_edges: bool,
+        periods_label: str = "period",
     ) -> go.Figure:
         graph_data = TimeSeriesAIO._prepare_time_series_to_plot(data, selected_periods)
+
         return plot_time_series(
             graph_data,
             x="time",
             y="series",
-            color="tce" if highlight_tces else None,
+            color="tce_tranists" if highlight_tces else None,
             period_edges="period_edges" if show_edges else None,
             hover_data=["periods"],
-            labels=dict(series=data["name"], periods="quarter"),
+            labels=dict(series=data["graph_name"], periods=periods_label),
         )
 
     @staticmethod
@@ -268,17 +276,14 @@ class TimeSeriesAIO(html.Div):
         data: TimeSeriesAIOData,
         selected_periods: list[str],
     ) -> _GraphData:
-        # 'TimeSeriesAIOData' to '_GraphData' keys mapping
-        # TODO: This mapping is probably unnecessary, so refactor at some point
-        mapping = zip(
-            ("periods", "time", "series", "tce", "period_edges"),
-            ("periods_labels", "time", "series", "tce_transits", "period_edges"),
-            strict=True,
+        logger.bind(periods=selected_periods).debug("Preparing time series data to plot")
+        selected_periods_mask = [period in selected_periods for period in data["periods_mask"]]
+        period_edges_mask = np.argwhere(np.diff(data["periods_mask"]) != 0).flatten()
+
+        return _GraphData(
+            time=data["time"][selected_periods_mask],
+            series=data["series"][selected_periods_mask],
+            periods=data["periods_mask"][selected_periods_mask],
+            tce_tranists=data["tce_transits"][selected_periods_mask],
+            period_edges=data["time"][period_edges_mask],
         )
-        graph_data: _GraphData = {}
-        for data_key, field in mapping:
-            series = [
-                values for period, values in data[field].items() if period in selected_periods
-            ]
-            graph_data[data_key] = np.concatenate(series)
-        return graph_data
