@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias, TypedDict
+from typing import Any, MutableMapping, TypeAlias, TypedDict
 from uuid import UUID
 
 import numpy as np
@@ -9,6 +9,16 @@ import numpy.typing as npt
 
 
 Id: TypeAlias = str | int | UUID
+
+
+def flatten_dict(dct: MutableMapping[str, Any]) -> dict[str, Any]:
+    items: list[Any] = []
+    for k, v in dct.items():
+        if isinstance(v, MutableMapping):
+            items.extend(flatten_dict(v).items())
+        else:
+            items.append((k, v))
+    return dict(items)
 
 
 @dataclass
