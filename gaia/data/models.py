@@ -118,12 +118,12 @@ AnySeries: TypeAlias = npt.NDArray[np.object_]
 
 
 class RawKeplerTimeSeries(TypedDict):
-    KEPLERID: int
-    QUARTER: int
-    TIME: list[float]
-    PDCSAP_FLUX: list[float]
-    MOM_CENTR1: list[float]
-    MOM_CENTR2: list[float]
+    id: int
+    period: int
+    time: list[float]
+    pdcsap_flux: list[float]
+    mom_centr1: list[float]
+    mom_centr2: list[float]
 
 
 class TimeSeries(TypedDict):
