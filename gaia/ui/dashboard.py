@@ -1,85 +1,38 @@
-import gzip
 from dataclasses import asdict
 from enum import Enum
-from typing import Any, Callable, Iterable, TypeAlias
+from typing import Any, Callable, Iterable, TypeAlias, TypeVar
 
+import numpy as np
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html
 from dash.exceptions import PreventUpdate
 
-from gaia.data.models import (
-    TCE,
-    KeplerStellarParameters,
-    KeplerTCE,
-    KeplerTimeSeries,
-    StellarParameters,
-    TceLabel,
+from gaia.data.models import TCE, Series, StellarParameters, TceLabel, flatten_dict
+from gaia.data.preprocessing import compute_transits
+from gaia.data.stores import (
+    StellarParametersStore,
+    TceStore,
+    TimeSeriesStore,
 )
-from gaia.data.sources import StellarParametersSource, TceSource, TimeSeriesSource
-from gaia.io import CsvTableReader, TimeSeriesPickleReader
+from gaia.log import logger
+from gaia.plotly import plot_tces_classes_distribution, plot_tces_histograms
 from gaia.ui.components import ComponentIds, DropdownOption, TimeSeriesAIO
 from gaia.ui.store import AllData, GlobalStore, RedisStore
-from gaia.ui.utils import compute_period_edges, compute_transits, flatten_series, get_key_for_value
-from gaia.visualisation.plotly import plot_tces_classes_distribution, plot_tces_histograms
 
 
-def get_tce_source():
-    reader = CsvTableReader(
-        source="/home/krzysiek/projects/gaia/data/raw/tables/q1_q17_dr25_tce_merged.csv",
-        mapping=dict(
-            kepid="target_id",
-            tce_plnt_num="tce_id",
-            tce_cap_stat="opt_ghost_core_aperture_corr",
-            tce_hap_stat="opt_ghost_halo_aperture_corr",
-            boot_fap="bootstrap_false_alarm_proba",
-            tce_rb_tcount0="rolling_band_fgt",
-            tce_prad="radius",
-            tcet_period="fitted_period",
-            tce_depth="transit_depth",
-            tce_time0bk="epoch",
-            tce_duration="duration",
-            tce_period="period",
-            kepler_name="name",
-            tce_label="label",
-        ),
-    )
-    return TceSource[KeplerTCE](reader)
+TStore = TypeVar("TStore", TceStore, TimeSeriesStore, StellarParametersStore)  # type: ignore
+STORES: dict[type, TStore] = {}  # type: ignore
 
 
-def get_series_source():
-    reader = TimeSeriesPickleReader[dict[str, KeplerTimeSeries]](
-        "/home/krzysiek/projects/gaia/",
-        id_path_pattern="test-{id}.gz",
-        decompression_fn=gzip.decompress,
-    )
-    return TimeSeriesSource[KeplerTimeSeries](reader)
-
-
-def get_params_source():
-    reader = CsvTableReader(
-        source="/home/krzysiek/projects/gaia/data/raw/tables/q1_q17_dr25_stellar.csv",
-        mapping=dict(
-            kepid="target_id",
-            teff="effective_temperature",
-            radius="radius",
-            mass="mass",
-            dens="density",
-            logg="surface_gravity",
-            feh="metallicity",
-        ),
-    )
-    return StellarParametersSource[KeplerStellarParameters](reader)
-
-
-TCE_SOURCE = get_tce_source()
-SP_SOURCE = get_params_source()
-TS_SOURCE = get_series_source()
+def get_key_for_value(value: Any, dct: dict[Any, Any]) -> Any:
+    return [k for k, v in dct.items() if value == v][0]
 
 
 def render_insight(*, icon: str, icon_color: str, header: str, text: str, footer: str) -> html.Div:
     return html.Div(
         [
             html.Div(
-                html.I(className=f"{icon} insight-icon"), className=f"insight-icon-bg {icon_color}",
+                html.I(className=f"{icon} insight-icon"),
+                className=f"insight-icon-bg {icon_color}",
             ),
             html.H3(header, className="insight-header"),
             html.H1(text, className="insight-text"),
@@ -92,26 +45,33 @@ def render_insight(*, icon: str, icon_color: str, header: str, text: str, footer
 def render_rows(data: dict[str, Any]) -> list[html.Div]:
     rows: list[html.Div] = []
     for field, value in data.items():
-        # Escape Enum <name, value> representation as it cannot be render via Dash (unsafe html)
-        p_value = value.value if isinstance(value, Enum) else value
-        h3 = f"{field}:"
+        # Escape Enum <name, value> representation as it cannot be render via Dash (unsafe html).
+
+        if isinstance(value, Enum):
+            field_value = value.value
+        elif isinstance(value, (int, float)):
+            field_value = round(value, 4)
+        else:
+            field_value = value
+
         rows.append(
-            html.Div([html.H3(h3), html.P(p_value, className="text-muted")], className="data-row"),
+            html.Div(
+                [html.H3(f"{field}:"), html.P(field_value, className="text-muted")],
+                className="data-row",
+            ),
         )
     return rows
 
 
 def render_stellar_parameters_overview(stellar_params: StellarParameters) -> html.Div:
-    params = {k: v for k, v in asdict(stellar_params).items() if not k.startswith("_")}
-    params = dict(sorted(params.items(), key=lambda x: x[0]))
-
+    params = flatten_dict(asdict(stellar_params))
     return html.Div(
         [
             html.H2("Stellar Parameters"),
             html.Div(
                 [
                     html.H3("target"),
-                    html.Span(stellar_params.target_id, className="badge bg-primary"),
+                    html.Span(stellar_params.id, className="badge bg-primary"),
                 ],
                 className="stellar-parameters-overview",
             ),
@@ -121,13 +81,14 @@ def render_stellar_parameters_overview(stellar_params: StellarParameters) -> htm
     )
 
 
-def render_stellar_parameters():
+def render_stellar_parameters() -> html.Div:
     @callback(
         Output(ComponentIds.STELLAR_PARAMETERS, "children"),
         Input(ComponentIds.GLOBAL_STORE, "data"),
         prevent_initial_call=True,
     )
-    def update(store: GlobalStore):
+    def update(store: GlobalStore) -> html.Div:
+        logger.info("Update stellar parameters layout")
         data_key = store["redis_data_key"]
 
         if not data_key:
@@ -135,12 +96,14 @@ def render_stellar_parameters():
 
         try:
             data: AllData = RedisStore.load(data_key)
-        except Exception:
+        except KeyError:
+            logger.bind(data_key=data_key).warning("Loadin data from Redis failed")
             raise PreventUpdate
 
         params = data["stellar_parameters"]
         return render_stellar_parameters_overview(params)
 
+    logger.info("Render initial stellar parameters layout")
     return html.Div(
         html.Div(
             [
@@ -171,16 +134,16 @@ def render_placeholder(text: str, placeholder_class: str) -> html.Div:
 
 
 TCE_LABELS_COLORS = {
+    TceLabel.PC: ("success", "bg-success-light"),
     TceLabel.AFP: ("warning", "bg-warning-light"),
     TceLabel.NTP: ("danger", "bg-danger-light"),
-    TceLabel.PC: ("success", "bg-success-light"),
+    TceLabel.FP: ("warning", "bg-warning-light"),
     TceLabel.UNKNOWN: ("primary", "bg-primary-light"),
 }
 
 
-def render_tce(tce: TCE):
-    tce_dict = {k: v for k, v in asdict(tce).items() if not k.startswith("_")}
-    tce_dict = dict(sorted(tce_dict.items(), key=lambda x: x[0]))
+def render_tce(tce: TCE) -> html.Div:
+    tce_dict = flatten_dict(asdict(tce))
     icon_color, icon_background_color = TCE_LABELS_COLORS[tce.label]
 
     return html.Div(
@@ -199,9 +162,10 @@ def render_tce(tce: TCE):
                                 ),
                                 html.Div(
                                     [
-                                        html.H3(tce.name or f"TCE {tce.tce_id}"),
+                                        html.H3(tce.name or f"TCE {tce.id}"),
                                         html.Small(
-                                            f"{tce.target_id}/{tce.tce_id}", className="text-muted",
+                                            f"{tce.target_id}/{tce.id}",
+                                            className="text-muted",
                                         ),
                                     ],
                                 ),
@@ -222,7 +186,8 @@ def render_tce(tce: TCE):
     )
 
 
-TARGET_ID_NORMALIZATION = {"kepler": lambda target_id: f"{target_id:09d}"}
+def get_data_stores() -> tuple[TceStore, StellarParametersStore, TimeSeriesStore]:  # type: ignore
+    return STORES[TceStore], STORES[StellarParametersStore], STORES[TimeSeriesStore]
 
 
 @callback(
@@ -233,47 +198,57 @@ TARGET_ID_NORMALIZATION = {"kepler": lambda target_id: f"{target_id:09d}"}
     ],
     prevent_initial_call=True,
 )
-def download_data(id_: str, store: GlobalStore) -> str:
-    id_ = id_.strip()
-    if not id_:
+def download_data(id_: str, store: GlobalStore) -> GlobalStore:
+    log = logger.bind(id=id_)
+    log.info("Downloading data")
+
+    if not (id_ := id_.strip()):
+        raise PreventUpdate
+
+    try:
+        tce_store, stellar_store, time_series_store = get_data_stores()
+    except KeyError as ex:
+        logger.error(f"Data store '{ex}' not set")
         raise PreventUpdate
 
     if id_.isnumeric():
         target_id = int(id_)
-        tces = TCE_SOURCE.get_all_for_target(target_id)
+        tces = tce_store.get_all_for_target(target_id)
     else:
-        tces = [TCE_SOURCE.get_by_name(id_)]
+        tces = [tce_store.get_by_name(id_)]
         target_id = tces[0].target_id
 
-    stellar_params = SP_SOURCE.get(target_id)
-    normalized_id = TARGET_ID_NORMALIZATION["kepler"](target_id)
-    time_series = TS_SOURCE.get(normalized_id)
+    stellar_params = stellar_store.get(target_id)
 
-    # Preprocessing
-    period_edges = compute_period_edges(time_series)
-    time, flat_series = flatten_series(time_series)
-    tce_transists = compute_transits(tces, time)
+    time_series = time_series_store.get(target_id)
+    log.info("Data downloaded")
+
+    tce_transists = compute_transits(
+        tces,
+        np.concatenate([series["time"] for series in time_series]),
+    )
+    log.info("TCE transits highlights computed")
 
     data = AllData(
-        period_edges=period_edges,
-        series=flat_series,
-        time=time,
+        time_series=time_series,
         tce_transits=tce_transists,
         tces=tces,
         stellar_parameters=stellar_params,
     )
     hash_key = RedisStore.save(data)
     store["redis_data_key"] = hash_key
+    log.bind(data_key=hash_key).info("Serialized data saved on Redis")
     return store
 
 
-def render_tces():
+def render_tces() -> html.Div:
     @callback(
         Output(ComponentIds.TCE_LIST, "children"),
         Input(ComponentIds.GLOBAL_STORE, "data"),
         prevent_initial_call=True,
     )
-    def update(store: GlobalStore):
+    def update(store: GlobalStore) -> list[html.Div]:
+        logger.info("Updating TCEs layout")
         data_key = store["redis_data_key"]
 
         if not data_key:
@@ -281,12 +256,14 @@ def render_tces():
 
         try:
             data: AllData = RedisStore.load(data_key)
-        except Exception:
+        except KeyError:
+            logger.bind(data_key=data_key).warning("Loading data from Redis failed")
             raise PreventUpdate
 
         tces = data["tces"]
         return [render_tce(tce) for tce in tces]
 
+    logger.info("Render initial TCEs layout")
     return html.Div(
         [
             html.H2("TCEs List"),
@@ -306,7 +283,8 @@ def render_tces():
 
 
 def render_time_series_graphs_dropdown(
-    available_graphs: Iterable[str | DropdownOption], id: str | dict[str, str],
+    available_graphs: Iterable[str | DropdownOption],
+    id: str | dict[str, str],
 ) -> html.Div:
     return html.Div(
         html.Details(
@@ -328,7 +306,11 @@ def render_time_series_graphs_dropdown(
 
 
 def render_tce_icon(
-    icon: str, color: str, background_color: str, icon_class: str, background_class: str,
+    icon: str,
+    color: str,
+    background_color: str,
+    icon_class: str,
+    background_class: str,
 ) -> html.Div:
     return html.Div(
         html.I(className=f"{icon} {color} {icon_class}"),
@@ -347,18 +329,20 @@ def render_tce_icon(
     ],
     prevent_initial_call=True,
 )
-def update_avaialble_graphs_options(
-    selected_graphs: list[str], store: GlobalStore,
-) -> list[DropdownOption]:
+def update_avaialable_graphs_options(
+    selected_graphs: list[str],
+    store: GlobalStore,
+) -> tuple[list[DropdownOption], dict[str, str]]:
     # Return all availables graphs - selected graphs
     new_options = [
         DropdownOption(label=label, value=value)
         for label, value in store["available_graphs"].items()
         if value not in selected_graphs
     ]
+
     # Hide dropdown if no options are avaialable
-    style = {"visibility": "visible" if new_options else "hidden"}
-    return new_options, style
+    dropdown_visibility = "visible" if new_options else "hidden"
+    return new_options, {"visibility": dropdown_visibility}
 
 
 @callback(
@@ -370,8 +354,9 @@ def update_avaialble_graphs_options(
     prevent_initial_call=True,
 )
 def update_avaialble_graphs_value(
-    _: int, currently_selected_graphs: list[str],
-) -> list[DropdownOption]:
+    _: int,
+    currently_selected_graphs: list[str],
+) -> list[str]:
     if not any([trigger["value"] for trigger in ctx.triggered]):  # No update, graph just rendered
         raise PreventUpdate
 
@@ -381,38 +366,66 @@ def update_avaialble_graphs_value(
 
 
 def create_graphs(
-    store: GlobalStore, selected_graphs_ids: list[str], _: list[dict[Any, Any]],
+    store: GlobalStore,
+    selected_graphs_ids: list[str],
+    _: list[dict[Any, Any]],
 ) -> list[TimeSeriesAIO]:
     try:
         data: AllData = RedisStore.load(store["redis_data_key"])
     except Exception:
         raise PreventUpdate
 
-    time_series = data["series"]
     new_graphs: list[TimeSeriesAIO] = []
 
     for graph_id in selected_graphs_ids:
         # `graph_id` = "series" or "series1,series2,..."
-        graph_name = get_key_for_value(graph_id, store["available_graphs"])
-
-        graph_series = [time_series[series_name] for series_name in graph_id.split(",")]
-        new_graphs.append(
-            TimeSeriesAIO(
-                *graph_series,
-                time=data["time"],
-                period_edges=data["period_edges"],
-                tce_transit_highlights=data["tce_transits"],
-                id_=graph_id,
-                name=graph_name,
-            ),
-        )
+        graph_data = create_graph_data(store["available_graphs"], data, graph_id)
+        new_graphs.append(graph_data)
 
     return new_graphs
 
 
+def create_graph_data(
+    available_graphs: dict[str, str],
+    data: AllData,
+    graph_id: str,
+) -> TimeSeriesAIO:
+    graph_name = get_key_for_value(graph_id, available_graphs)
+    series_names = graph_id.split(",")
+
+    series: list[Series] = []
+    time_series = data["time_series"]
+
+    for segment in time_series:
+        individual_series = tuple(segment[name] for name in series_names)  # type: ignore
+
+        # Stack time series to 2D array if many series should be preporcessed before final plotting.
+        if len(individual_series) > 1:
+            segment = np.stack(individual_series, axis=0)
+        else:
+            segment = individual_series[0]
+
+        series.append(segment)  # type: ignore
+
+    periods_mask = np.concatenate(
+        [np.repeat(segment["period"], segment["time"].size) for segment in time_series],
+    )
+
+    return TimeSeriesAIO(
+        series,
+        time=[segment["time"] for segment in time_series],
+        periods_mask=periods_mask,
+        tce_transits=data["tce_transits"],
+        graph_id=graph_id,
+        graph_name=graph_name,
+    )
+
+
 def add_remove_graphs(
-    store: GlobalStore, selected_graphs_ids: list[str], rendered_graphs: list[dict[Any, Any]],
-) -> list[TimeSeriesAIO]:
+    store: GlobalStore,
+    selected_graphs_ids: list[str],
+    rendered_graphs: list[dict[Any, Any]],
+) -> list[TimeSeriesAIO | dict[Any, Any]]:
     rendered_graphs_ids = {graph["props"]["id"] for graph in rendered_graphs}
     graph_ids_to_add = set(selected_graphs_ids) - rendered_graphs_ids
 
@@ -422,24 +435,13 @@ def add_remove_graphs(
         except Exception:
             raise PreventUpdate
 
-        time_series = data["series"]
         new_graphs: list[TimeSeriesAIO] = []
 
         for graph_id in graph_ids_to_add:
-            series = [time_series[series_name] for series_name in graph_id.split(",")]
-            graph_name = get_key_for_value(graph_id, store["available_graphs"])
-            new_graphs.append(
-                TimeSeriesAIO(
-                    *series,
-                    time=data["time"],
-                    period_edges=data["period_edges"],
-                    tce_transit_highlights=data["tce_transits"],
-                    id_=graph_id,
-                    name=graph_name,
-                ),
-            )
+            new_graph_data = create_graph_data(store["available_graphs"], data, graph_id)
+            new_graphs.append(new_graph_data)
 
-        return rendered_graphs + new_graphs
+        return rendered_graphs + new_graphs  # type: ignore
 
     # Remove graph
     graph_ids_to_remove = rendered_graphs_ids - set(selected_graphs_ids)
@@ -447,14 +449,15 @@ def add_remove_graphs(
 
 
 UpdateGraphsFunction: TypeAlias = Callable[
-    [GlobalStore, list[str], list[dict[Any, Any]]], list[TimeSeriesAIO],
+    [GlobalStore, list[str], list[dict[Any, Any]]],
+    list[TimeSeriesAIO],
 ]
 
 
 # Functions to create/modify graphs on add/remove/data download
 UPDATE_GRAPHS_HANDLERS: dict[str, UpdateGraphsFunction] = {
     ComponentIds.GLOBAL_STORE: create_graphs,
-    ComponentIds.ADD_TIME_SERIES_GRAPH: add_remove_graphs,
+    ComponentIds.ADD_TIME_SERIES_GRAPH: add_remove_graphs,  # type: ignore
 }
 
 
@@ -468,13 +471,15 @@ UPDATE_GRAPHS_HANDLERS: dict[str, UpdateGraphsFunction] = {
     prevent_initial_call=True,
 )
 def update_graphs_collection(
-    store: GlobalStore, selected_graphs: list[str], rendered_graphs: list[dict[Any, Any]],
+    store: GlobalStore,
+    selected_graphs: list[str],
+    rendered_graphs: list[dict[Any, Any]],
 ) -> list[TimeSeriesAIO]:
     update_handler = UPDATE_GRAPHS_HANDLERS[ctx.triggered_id]
     return update_handler(store, selected_graphs, rendered_graphs)
 
 
-def render_tce_labels_distribution(labels_distribution: dict[str, int]) -> html.Div:
+def render_tce_labels_distribution(labels_distribution: dict[TceLabel, int]) -> html.Div:
     fig = plot_tces_classes_distribution(labels_distribution)
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
@@ -484,9 +489,13 @@ def render_tce_labels_distribution(labels_distribution: dict[str, int]) -> html.
     return html.Div(dcc.Graph(figure=fig), className="insight")
 
 
-def create_dashboard(
-    tce_source: TceSource[TCE], available_time_series_graphs: dict[str, str], data_origin: str,
-) -> html.Div:
+def create_dashboard(available_time_series_graphs: dict[str, str]) -> html.Div:
+    try:
+        tce_store, _, _ = get_data_stores()
+    except KeyError as ex:
+        logger.error(f"Data store {ex} not set")
+        raise PreventUpdate
+
     insights = html.Div(
         [
             render_insight(
@@ -500,17 +509,17 @@ def create_dashboard(
                 icon="fa-solid fa-globe",
                 icon_color="bg-success",
                 header="TCEs count",
-                text=tce_source.tce_count,
+                text=str(tce_store.tce_count),
                 footer="The number of Threshold-Crossing Events",
             ),
             render_insight(
                 icon="fa-solid fa-sun",
                 icon_color="bg-primary",
                 header="Targets Count",
-                text=len(tce_source.target_unique_ids),
+                text=str(len(tce_store.unique_target_ids)),
                 footer="The number of unique target stars or binary/multiple systems",
             ),
-            render_tce_labels_distribution(TCE_SOURCE.labels_distribution),
+            render_tce_labels_distribution(tce_store.labels_distribution),
         ],
         className="insights",
     )
@@ -534,7 +543,7 @@ def create_dashboard(
         className="time-series-container",
     )
 
-    histogram_figures = plot_tces_histograms(TCE_SOURCE.events)
+    histogram_figures = plot_tces_histograms([event for _, _, event in tce_store.events])
     for fig in histogram_figures:
         fig.update_layout(
             margin=dict(l=0, r=0, t=30, b=0),
@@ -574,11 +583,7 @@ def create_dashboard(
             dcc.Store(
                 id=ComponentIds.GLOBAL_STORE,
                 storage_type="local",
-                data=GlobalStore(
-                    redis_data_key="",
-                    available_graphs=available_time_series_graphs,
-                    data_origin=data_origin,
-                ),
+                data=GlobalStore(redis_data_key="", available_graphs=available_time_series_graphs),
             ),
         ],
         className="app-container",
