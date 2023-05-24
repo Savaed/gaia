@@ -114,15 +114,15 @@ class ParquetReader:
 
     def __init__(
         self,
-        data_dir: Path,
+        data_dir: Path | str,
         id_path_pattern: Pattern[str] | None = None,
         columns: Iterable[str] | None = None,
     ) -> None:
-        self._data_dir = data_dir
+        self._data_dir = Path(data_dir)
         self._id_pattern = id_path_pattern
         self._columns = set(columns) if columns else set()
 
-        self._paths = self._get_paths(data_dir, id_path_pattern)
+        self._paths = self._get_paths(id_path_pattern)
 
     def read_by_id(self, id: Id) -> list[dict[str, Any]]:
         """Read the parquet file that contains the ID in the file path.
@@ -163,12 +163,12 @@ class ParquetReader:
 
         return results
 
-    def _get_paths(self, data_dir: Path, id_path_pattern: Pattern[str] | None) -> dict[str, Path]:
+    def _get_paths(self, id_path_pattern: Pattern[str] | None) -> dict[str, Path]:
         paths: dict[str, Path] = {}
-        log = logger.bind(id_pattern=id_path_pattern, data_dir=data_dir.as_posix())
+        log = logger.bind(id_pattern=id_path_pattern, data_dir=self._data_dir.as_posix())
         log.debug("Searching parquet files")
 
-        for path in data_dir.iterdir():
+        for path in self._data_dir.iterdir():
             if id_path_pattern:
                 try:
                     id = id_path_pattern.search(path.as_posix()).group()  # type: ignore
