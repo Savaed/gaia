@@ -73,3 +73,11 @@ def retry(
         return wrapped
 
     return wrapper
+
+
+TInput = TypeVar("TInput")
+TOutput = TypeVar("TOutput")
+
+
+def compose(*composable_funcs: Callable[[TInput], TOutput]) -> Callable[[TInput], TOutput]:
+    return functools.reduce(lambda f, g: lambda x: g(f(x)), composable_funcs)  # type: ignore
