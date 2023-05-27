@@ -65,7 +65,7 @@ def create_downloader(cfg: Config) -> RestDownloader:
 
 
 async def main(cfg: Config) -> int:
-    prepare_loop(asyncio.get_event_loop())
+    prepare_loop(asyncio.get_running_loop())
 
     cfg_dict = OmegaConf.to_object(cfg)
     print_downloading_header(cfg, dedent(SCRIPT_DESCRIPTION))
