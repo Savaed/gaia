@@ -65,7 +65,7 @@ def plot_time_series(
 
     if period_edges:
         edges = df[period_edges].values
-        edges = sorted(edges[~np.isnan(edges)])[:-1]  # Do not plot the last period endpoint
+        edges = edges[~np.isnan(edges)]
         for edge in edges:
             fig.add_vline(x=edge, line_width=2, line_dash="dash", line_color="green")
 
