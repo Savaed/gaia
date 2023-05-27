@@ -1,12 +1,12 @@
 **/*.p[ocd]
 **/__pycache__/
 .coverage
-data/
 .env
 .git/
-htmlcov/
 .tox/
 .vscode/
 coverage*
-outputs/
+data/
+htmlcov/
 logs/
+outputs/
