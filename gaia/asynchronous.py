@@ -8,7 +8,7 @@ from typing import Any, TypeAlias
 from gaia.log import logger
 
 
-_EventLoop: TypeAlias = asyncio.AbstractEventLoop
+EventLoop: TypeAlias = asyncio.AbstractEventLoop
 _Handler: TypeAlias = Callable[[signal.Signals | None], Coroutine[Any, Any, None]]
 _CancellableList: TypeAlias = list[asyncio.Task[Any]] | list[asyncio.Future[Any]]
 
@@ -29,7 +29,7 @@ async def shutdown(exit_signal: signal.Signals | None = None) -> None:
 
 
 def set_signals_handler(
-    loop: _EventLoop,
+    loop: EventLoop,
     handler: _Handler,
     exit_signals: set[signal.Signals] | None = None,
 ) -> None:
@@ -49,7 +49,7 @@ def set_signals_handler(
         )
 
 
-def log_exception(_: _EventLoop, context: dict[str, Any]) -> None:
+def log_exception(_: EventLoop, context: dict[str, Any]) -> None:
     """Log any unhandled exceptions from tasks as `logging.ERROR`.
 
     See `asyncio.loop.call_exception_handler()` docs for `context` details.
@@ -68,3 +68,13 @@ async def cancel_tasks(tasks: _CancellableList) -> None:
     [task.cancel() for task in tasks]
     await asyncio.gather(*tasks, return_exceptions=True)
     logger.info("Tasks cancelled")
+
+
+def prepare_loop(loop: EventLoop) -> None:
+    """Set exception and signal default handlers.
+
+    Args:
+        loop (EventLoop): `asyncio` event loop
+    """
+    loop.set_exception_handler(log_exception)
+    set_signals_handler(loop, shutdown)
