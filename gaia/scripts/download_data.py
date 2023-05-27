@@ -24,8 +24,8 @@ SCRIPT_DESCRIPTION = """
 
     The script has a mechanism for retrying the download in case of an error.
 
-    The metadata of the time series downloaded once is saved in the file and is not downloaded again
-    the next time the script is run (unless the metadata file has been deleted).
+    The metadata of the time series downloaded once is saved in the file and time series are not
+    downloaded again the next time the script is run (unless the metadata file has been deleted).
 
     Note that the size of the downloaded data is significant (hundreds of GB).
 
