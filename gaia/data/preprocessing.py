@@ -2,7 +2,6 @@ import numpy as np
 import numpy.typing as npt
 
 from gaia.data.models import TCE, Series
-from gaia.log import logger
 
 
 def compute_euclidean_distance(series: Series) -> Series:
@@ -29,8 +28,6 @@ def compute_transits(
     default: str = "no detected",
 ) -> npt.NDArray[np.object_]:
     transits_mask = [default] * len(time)
-
-    logger.error(f"{time.min(), time.max()}")
 
     for tce in tces:
         tce_name = tce.name or str(tce.id)

@@ -97,7 +97,7 @@ def render_stellar_parameters() -> html.Div:
         try:
             data: AllData = RedisStore.load(data_key)
         except KeyError:
-            logger.bind(data_key=data_key).warning("Loadin data from Redis failed")
+            logger.bind(data_key=data_key).warning("Loading data from Redis failed")
             raise PreventUpdate
 
         params = data["stellar_parameters"]
