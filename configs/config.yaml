@@ -120,6 +120,7 @@ data:
       data_header: LIGHTCURVE
       data_columns: [TIME, PDCSAP_FLUX, MOM_CENTR1, MOM_CENTR2]
       meta_columns: [KEPLERID, QUARTER]
+      path_target_id_pattern: (?<=kplr)\d{9}
       names_map:
         TIME: time
         PDCSAP_FLUX: pdcsap_flux

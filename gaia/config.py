@@ -43,6 +43,7 @@ class TimeSeriesConvertConfig(BaseModel):
     data_columns: list[str]
     meta_columns: list[str]
     names_map: dict[str, str]
+    path_target_id_pattern: str
 
 
 class DataConvertConfig(BaseModel):
