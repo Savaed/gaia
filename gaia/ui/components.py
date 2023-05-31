@@ -59,6 +59,7 @@ def switches(options: Iterable[DropdownOption], id: str | ComponentId) -> dcc.Ch
         labelClassName="switch",
         className="time-series-graph-switches",
         id=id,
+        labelStyle={"display": "flex"},
     )
 
 
