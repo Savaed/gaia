@@ -95,44 +95,44 @@ def test_read_fits__file_not_found(mocker):
     """Test that `FileNotFoundError` is raised when no file was found."""
     mocker.patch("gaia.io.fits.getdata", side_effect=FileNotFoundError())
     with pytest.raises(FileNotFoundError):
-        read_fits("test/file.fits", "HEADER", meta=())
+        read_fits("test/file.fits", "HEADER", meta=[])
 
 
 def test_read_fits__data_header_not_found(mocker):
     """Test that `KeyError` is raised when no data HDU header was found."""
     mocker.patch("gaia.io.fits.getdata", side_effect=KeyError())
     with pytest.raises(KeyError):
-        read_fits("test/file.fits", "HEADER", meta=())
+        read_fits("test/file.fits", "HEADER", meta=[])
 
 
 def test_read_fits__data_column_not_found(mocker):
     """Test that `KeyError` is raised when any of data column were not found."""
     mocker.patch("gaia.io.fits.getdata", side_effect=KeyError())
     with pytest.raises(KeyError):
-        read_fits("test/file.fits", "HEADER", columns={"x"}, meta=())
+        read_fits("test/file.fits", "HEADER", columns=["x"], meta=[])
 
 
 def test_read_fits__metadata_column_not_found(mocker):
     """Test that `KeyError` is raised when any of metadata column were not found."""
     mocker.patch("gaia.io.fits.getheader", side_effect=KeyError())
     with pytest.raises(KeyError):
-        read_fits("test/file.fits", "HEADER", meta={"not_existent_column"})
+        read_fits("test/file.fits", "HEADER", meta=["not_existent_column"])
 
 
-@pytest.mark.parametrize("meta", [None, (), [], set()], ids=["none", "tuple", "list", "set"])
+@pytest.mark.parametrize("meta", [None, []], ids=["none", "list"])
 def test_read_fits__meta_empty_or_none(meta, mocker, fits_data):
     """Test that metadata is not read from the FITS file header."""
     mocker.patch("gaia.io.fits.getdata", return_value=fits_data)
     getheader_mock = mocker.patch("gaia.io.fits.getheader")
-    read_fits("test/file.fits", data_header="HEADER", columns={"x"}, meta=meta)
+    read_fits("test/file.fits", data_header="HEADER", columns=["x"], meta=meta)
     assert getheader_mock.call_count == 0
 
 
 @pytest.mark.parametrize(
     "meta_columns,expected",
     [
-        ({"A"}, {"A": 1}),
-        ({"A", "B"}, {"A": 1, "B": "xyz"}),
+        (["A"], {"A": 1}),
+        (["A", "B"], {"A": 1, "B": "xyz"}),
     ],
     ids=["single_column", "all_columns"],
 )
@@ -144,11 +144,10 @@ def test_read_fits__return_correct_meta(meta_columns, expected, mocker, fits_hea
     assert result == expected
 
 
-@pytest.mark.parametrize("columns", [(), [], set()], ids=["tuple", "list", "set"])
-def test_read_fits__empty_columns(columns, mocker):
+def test_read_fits__empty_columns(mocker):
     """Test that no data is read when parameter `columns` is an empty sequence."""
     getdata_mock = mocker.patch("gaia.io.fits.getdata")
-    read_fits("test/file.fits", data_header="HEADER", columns=columns, meta=())
+    read_fits("test/file.fits", data_header="HEADER", columns=[], meta=[])
     assert getdata_mock.call_count == 0
 
 
@@ -156,9 +155,9 @@ def test_read_fits__empty_columns(columns, mocker):
     "columns,expected",
     [
         (None, {"x": np.array([1, 2]), "y": np.array([3.0, 4.0])}),
-        ({"x"}, {"x": np.array([1, 2])}),
-        ({"x", "y"}, {"x": np.array([1, 2]), "y": np.array([3.0, 4.0])}),
-        ({}, {}),
+        (["x"], {"x": np.array([1, 2])}),
+        (["x", "y"], {"x": np.array([1, 2]), "y": np.array([3.0, 4.0])}),
+        ([], {}),
     ],
     ids=["all_columns_by_default", "single_column", "two_columns", "no_data"],
 )
