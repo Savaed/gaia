@@ -17,6 +17,7 @@ from gaia.io import (
     ParquetReader,
     ParquetTableReader,
     ReaderError,
+    create_dir_if_not_exist,
     read_fits,
 )
 from tests.conftest import assert_dict_with_numpy_equal
@@ -325,3 +326,39 @@ def test_parquet_table_reader_read__return_correct_data(columns, where, expected
     reader = ParquetTableReader(filepath)
     actual = reader.read(columns, where)
     assert all(a == b for a, b in zip(actual, expected))
+
+
+def test_create_dir_if_not_exist__path_to_file(tmp_path):
+    """Test that `ValueError` is raised when a path points to a file not directory."""
+    filepath = tmp_path / "test.txt"
+    filepath.touch()
+    with pytest.raises(ValueError):
+        create_dir_if_not_exist(filepath)
+
+
+@pytest.mark.parametrize("invalid_path", [132, 1.23, ["file", "path", "/"]])
+def test_create_dir_if_not_exist__invalid_path(invalid_path):
+    """Test that `TypeError` is raised when path is not `str`, or `os.PathLike` object."""
+    with pytest.raises(TypeError):
+        create_dir_if_not_exist(invalid_path)
+
+
+@pytest.fixture
+def create_path(tmp_path):
+    """Return a temporary path to a file or directory."""
+
+    def create(path_final_part):
+        if not path_final_part:
+            return tmp_path
+
+        return tmp_path / path_final_part
+
+    return create
+
+
+@pytest.mark.parametrize("path_final_part", [None, Path("a"), "a/b"])
+def test_create_dir_if_not_exist__create_path(path_final_part, create_path):
+    """Test that directory is correctly created."""
+    dir_path = create_path(path_final_part)
+    create_dir_if_not_exist(dir_path)
+    assert dir_path.is_dir()

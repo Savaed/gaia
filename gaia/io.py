@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Collection, Iterable, Pattern, Protocol, TypeAlias
+from typing import Any, Iterable, Pattern, Protocol, TypeAlias
 
 import duckdb
 import numpy as np
@@ -50,7 +50,7 @@ class FileSaver:
 
 
 FitsData: TypeAlias = dict[str, Series | int | float | str]
-Columns: TypeAlias = Collection[str]
+Columns: TypeAlias = list[str]
 
 
 def read_fits(
@@ -238,3 +238,26 @@ class ParquetTableReader:
 
 def get_duckdb_missing_column(ex: duckdb.BinderException) -> str:
     return re.search('".*"', str(ex)).group().strip("")  # type: ignore
+
+
+def create_dir_if_not_exist(path_like: Any) -> Path:
+    """Create a directory from a given path.
+
+    Args:
+        path_like (Any): The directory path. Should be a `str`
+
+    Raises:
+        TypeError: `path_like` is not `str` or `os.PathLike` object
+        ValueError: `path_like` points to a file instead of a directory
+
+    Returns:
+        Path: The directory path
+    """
+    dir_path = Path(path_like)
+    if dir_path.is_file():
+        raise ValueError(f"'{dir_path}' is a file, but a directory is required")
+
+    if not dir_path.exists():
+        dir_path.mkdir(parents=True)
+
+    return dir_path
