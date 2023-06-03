@@ -10,3 +10,7 @@ class Cadence(Enum):
     """Observations with an interval of ~29.4 minutes."""
     SHORT = "slc"
     """Observations with an interval of ~1 minute."""
+
+
+class Mission(Enum):
+    KEPLER = "kepler"
