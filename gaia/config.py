@@ -53,7 +53,7 @@ class AppConfig(BaseModel):
     raw_time_series_dir: DirectoryPath
     interim_tables_dir: DirectoryPath
     interim_time_series_dir: DirectoryPath
-    download: DataDownloadConfig | None = None
+    download: DataDownloadConfig
 
     @validator(
         "raw_tables_dir",
