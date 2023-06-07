@@ -47,6 +47,19 @@ class DataDownloadConfig(BaseModel):
         arbitrary_types_allowed = True
 
 
+class TceMergeConfig(BaseModel):
+    script_description: str
+    select_sql: str
+    join_sql: str
+    labels_case_sql: list[str]
+    output: Path
+    label_column: str
+
+
+class PreprocessingConfig(BaseModel):
+    tce_merge: TceMergeConfig
+
+
 class AppConfig(BaseModel):
     mission: Mission
     raw_tables_dir: DirectoryPath
@@ -54,6 +67,7 @@ class AppConfig(BaseModel):
     interim_tables_dir: DirectoryPath
     interim_time_series_dir: DirectoryPath
     download: DataDownloadConfig
+    preprocessing: PreprocessingConfig
 
     @validator(
         "raw_tables_dir",

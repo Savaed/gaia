@@ -35,7 +35,7 @@ def print_header(description: str | None = None, hydra_info: bool = True) -> Non
         console.print(f"🌍 [bold]{project_description}[/bold]\n")
 
         if description:
-            console.print(description)
+            console.print(f"{description.strip()}\n")
 
         if hydra_info:
             try:
