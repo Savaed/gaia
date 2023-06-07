@@ -37,7 +37,7 @@ class CsvConverter:
     def convert(
         self,
         inputs: PathOrPattern,
-        output: Path,
+        output: Path | str,
         include_columns: Columns | None = None,
         columns_mapping: dict[str, str] | None = None,
     ) -> None:
@@ -56,6 +56,7 @@ class CsvConverter:
             ValueError: Column to select or rename not found in the input file(s) OR unsupported
                 input/output file(s) formats
         """
+        output = Path(output)
         log = logger.bind(input=inputs, output=output)
         self._validate_output_file(output)
         input_filepaths = [Path(path) for path in glob.glob(str(inputs), recursive=True)]
@@ -162,8 +163,8 @@ class FitsConverter:
     async def convert(
         self,
         inputs: PathOrPattern,
-        output_dir: Path,
-        path_target_id_pattern: Pattern[str],
+        output_dir: Path | str,
+        path_target_id_pattern: Pattern[str] | str,
     ) -> None:
         """Convert FITS time series files to json or parquet format.
 
@@ -183,7 +184,7 @@ class FitsConverter:
             path_target_id_pattern (Pattern[str]): Regex to retrieve target id from file paths
         """
         async with self._save_processed_ids():
-            await self._convert(inputs, output_dir, path_target_id_pattern)
+            await self._convert(inputs, Path(output_dir), re.compile(path_target_id_pattern))
 
     async def _convert(
         self,

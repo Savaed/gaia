@@ -1,9 +1,11 @@
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, DirectoryPath, HttpUrl, PositiveInt, validator
+from pydantic.dataclasses import dataclass
+from pydantic.generics import GenericModel
 
+from gaia.data.converters import FitsConvertingSettings
 from gaia.downloaders import HTTPFileRequest
 from gaia.enums import Cadence, Mission
 from gaia.io import create_dir_if_not_exist
@@ -15,7 +17,7 @@ from gaia.io import create_dir_if_not_exist
 
 @dataclass
 class SaverConfig:
-    _target_: str  # '_target_' is repeated because of some weird behaviour of Pydantic + dataclass
+    _target_: str
     tables_dir: str
     time_series_dir: str
 
@@ -56,8 +58,38 @@ class TceMergeConfig(BaseModel):
     label_column: str
 
 
+@dataclass
+class TargetableObject:
+    _target_: str
+
+
+@dataclass
+class BasicConverter(TargetableObject):
+    ...
+
+
+@dataclass
+class TimeSeriesConverter(BasicConverter):
+    settings: FitsConvertingSettings
+
+
+TConverter = TypeVar("TConverter", bound=BasicConverter)
+
+
+class ConverterConfig(GenericModel, Generic[TConverter]):
+    converter: TConverter
+    conversion_parameters: dict[str, Any]  # In the future, it may be some generic config
+
+
+class ConversionConfig(BaseModel):
+    tce: ConverterConfig[BasicConverter]
+    stellar_parameters: ConverterConfig[BasicConverter]
+    time_series: ConverterConfig[TimeSeriesConverter]
+
+
 class PreprocessingConfig(BaseModel):
     tce_merge: TceMergeConfig
+    conversion: ConversionConfig
 
 
 class AppConfig(BaseModel):

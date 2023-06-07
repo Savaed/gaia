@@ -102,7 +102,7 @@ def test_csv_converter_convert__invalid_include_column(mock_glob, create_single_
         CsvConverter().convert(
             create_single_csv_file,
             Path("file.json"),
-            include_columns={"not_existent_column"},
+            include_columns=["not_existent_column"],
         )
 
 
@@ -213,8 +213,8 @@ def fits_convert_settings():
     """Return FITS converting settings."""
     return FitsConvertingSettings(
         data_header="TEST_HDU",
-        data_columns=("col1", "col2"),
-        meta_columns=("meta1", "meta2"),
+        data_columns=["col1", "col2"],
+        meta_columns=["meta1", "meta2"],
         names_map=dict(col1="column1"),
         output_format=FitsConvertingOutputFormat.PARQUET,
     )
@@ -342,8 +342,8 @@ async def test_fits_converter_convert__resume_converting(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("data_columns", [None, {"col1", "col2"}])
-@pytest.mark.parametrize("meta_columns", [None, {"meta1", "meta2"}])
+@pytest.mark.parametrize("data_columns", [None, ["col1", "col2"]])
+@pytest.mark.parametrize("meta_columns", [None, ["meta1", "meta2"]])
 async def test_fits_converter_convert__read_only_specific_columns(
     meta_columns,
     data_columns,
