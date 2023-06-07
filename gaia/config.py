@@ -27,7 +27,6 @@ class DataDownloaderConfig:
     _target_: str
     saver: SaverConfig
     cadence: Cadence
-    nasa_base_url: HttpUrl
     mast_base_url: HttpUrl
     num_async_requests: PositiveInt
 
@@ -40,6 +39,7 @@ class DataDownloadConfig(BaseModel):
     download_tables: bool
     download_time_series: bool
     downloader: DataDownloaderConfig
+    nasa_base_url: HttpUrl
     tables_requests: list[HTTPFileRequest]
     script_description: str
     tce_file_path: Path

@@ -22,9 +22,8 @@ def get_target_ids(target_id_column: str, tce_file_path: Path) -> list[Id]:
 
 async def main(cfg: AppConfig) -> int:
     prepare_loop(asyncio.get_running_loop())
-    cfg_dict = OmegaConf.to_object(cfg)
+    cfg = AppConfig(**OmegaConf.to_object(cfg))
     print_header(cfg.download.script_description)
-    cfg = AppConfig(**cfg_dict)  # Resolve configs via Hydra and validate via Pydantic
 
     if not cfg.download.verbose:
         logger.disable("gaia.downloaders")

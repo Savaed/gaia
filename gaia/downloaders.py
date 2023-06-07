@@ -59,12 +59,10 @@ class KeplerDownloader:
         self,
         saver: Saver,
         cadence: Cadence,
-        nasa_base_url: str,
         mast_base_url: str,
         num_async_requests: int = 25,
     ) -> None:
         self._saver = saver
-        self._nasa_base_url = nasa_base_url.rstrip("/")
         self._mast_base_url = mast_base_url.rstrip("/")
         self._checkpoint_filepath = Path().cwd() / f"{self.__class__.__name__}_checkpoint.txt"
         self._cadence = cadence
@@ -121,8 +119,8 @@ class KeplerDownloader:
         try:
             await saving_task
         except asyncio.CancelledError:
-            # When there are no download urls, the `saving_task` is immediately canceled and raise a
-            # CancelledError
+            # HACK: When there are no download urls, the `saving_task` is immediately canceled and
+            # raise a asyncio.CancelledError
             ...
 
     def _raise_for_nasa_error(self, response_body: bytes) -> None:
@@ -157,7 +155,6 @@ class KeplerDownloader:
                     self._add_save_task(saving_tasks, loop, pool, *queue.get_nowait())
                 if saving_tasks:
                     await self._await_save(saving_tasks)
-                # raise
             finally:
                 self._save_downloaded_urls_checkpoint()
 
@@ -201,7 +198,6 @@ class KeplerDownloader:
 
     @_handle_saving_result.register
     def _(self, result: Exception, url: str) -> None:
-        # Is this logger even necessary?
         logger.bind(reason=result, url=url).error("Cannot save FITS files")
         raise result
 

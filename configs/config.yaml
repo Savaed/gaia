@@ -35,14 +35,14 @@ download:
       time_series_dir: ${raw_time_series_dir}
     cadence: llc
     mast_base_url: https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:Kepler/url/missions/kepler/lightcurves
-    nasa_base_url: https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI
     num_async_requests: 25
+  nasa_base_url: https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI
   tables_requests:
-    - - ${download.downloader.nasa_base_url}?table=q1_q17_dr25_tce&columns=kepid,tce_plnt_num,tce_rogue_flag,tce_period,tce_time0bk,tce_time0,tce_duration,tce_depth,tce_prad,tcet_period,boot_fap,tce_cap_stat,tce_hap_stat,tce_rb_tcount0&format=csv
+    - - ${download.nasa_base_url}?table=q1_q17_dr25_tce&columns=kepid,tce_plnt_num,tce_rogue_flag,tce_period,tce_time0bk,tce_time0,tce_duration,tce_depth,tce_prad,tcet_period,boot_fap,tce_cap_stat,tce_hap_stat,tce_rb_tcount0&format=csv
       - q1_q17_dr25_tce.csv
-    - - ${download.downloader.nasa_base_url}?table=q1_q17_dr25_koi&columns=kepid,kepoi_name,kepler_name,koi_disposition,koi_pdisposition,koi_tce_plnt_num&format=csv
+    - - ${download.nasa_base_url}?table=q1_q17_dr25_koi&columns=kepid,kepoi_name,kepler_name,koi_disposition,koi_pdisposition,koi_tce_plnt_num&format=csv
       - q1_q17_dr25_koi.csv
-    - - ${download.downloader.nasa_base_url}?table=q1_q17_dr25_stellar&columns=kepid,teff,radius,mass,dens,logg,feh&format=csv
+    - - ${download.nasa_base_url}?table=q1_q17_dr25_stellar&columns=kepid,teff,radius,mass,dens,logg,feh&format=csv
       - q1_q17_dr25_stellar.csv
 
 preprocessing:
@@ -64,7 +64,6 @@ preprocessing:
 
       Metadata of once converted time series are saved in the file and the time series are not
       converted again the next time the script is run (unless the metadata file has been deleted).
-
 
     tce:
       converter:
@@ -142,10 +141,6 @@ preprocessing:
         inputs: ${raw_time_series_dir}/*.fits
         output_dir: ${interim_time_series_dir}
         path_target_id_pattern: (?<=kplr)\d{9}
-
-
-
-
 
 
 # mission: KEPLER
