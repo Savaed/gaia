@@ -106,36 +106,33 @@ def test_csv_converter_convert__invalid_include_column(mock_glob, create_single_
         )
 
 
-def test_csv_converter_convert__invalid_mapping_column(mock_glob, create_single_csv_file):
-    """Test that `ValueError` is raised when no column to rename was found."""
-    mock_glob([[create_single_csv_file.as_posix()]])
-    with pytest.raises(ValueError):
-        CsvConverter().convert(
-            create_single_csv_file,
-            Path("file.json"),
-            columns_mapping={"not_existent_column": "x"},
-        )
+# def test_csv_converter_convert__invalid_mapping_column(mock_glob, create_single_csv_file):
+#     """Test that `ValueError` is raised when no column to rename was found."""
+#     mock_glob([[create_single_csv_file.as_posix()]])
+#     with pytest.raises(ValueError):
+#         CsvConverter().convert(
+#             create_single_csv_file,
+#             Path("file.json"),
+#             columns_mapping={"not_existent_column": "x"},
+#         )
 
 
 @pytest.mark.parametrize("output", ["output.json", "output.parquet"])
 @pytest.mark.parametrize(
-    "columns,mapping,expected",
+    "columns,expected",
     [
-        (None, None, create_df((["a", "b"], [1, 2.0], [3, 4.0]))),
-        (["a"], None, create_df((["a"], [1], [3]))),
-        (["a"], {"a": "A"}, create_df((["A"], [1], [3]))),
-        (["a", "b"], None, create_df((["a", "b"], [1, 2.0], [3, 4.0]))),
+        (None, create_df((["a", "b"], [1, 2.0], [3, 4.0]))),
+        (["a"], create_df((["a"], [1], [3]))),
+        (["a", "b"], create_df((["a", "b"], [1, 2.0], [3, 4.0]))),
     ],
     ids=[
         "all_columns_by_default",
         "specific_column",
-        "map_columns_names",
         "specific_columns",
     ],
 )
 def test_csv_converter_convert__convert_single_file_correctly(
     columns,
-    mapping,
     expected,
     output,
     create_single_csv_file,
@@ -147,7 +144,6 @@ def test_csv_converter_convert__convert_single_file_correctly(
         create_single_csv_file,
         output=output_path,
         include_columns=columns,
-        columns_mapping=mapping,
     )
     actual = duckdb.sql(f"FROM '{output_path}';").df()
 
@@ -169,23 +165,20 @@ def create_two_csv_files(create_csv_file, tmp_path):
 
 @pytest.mark.parametrize("output", ["output.json", "output.parquet"])
 @pytest.mark.parametrize(
-    "columns,mapping,expected",
+    "columns,expected",
     [
-        (None, None, create_df((["a", "b"], [1, 2.0], [3, 4.0], [5, 6.0], [7, 8.0]))),
-        (["a"], None, create_df((["a"], [1], [3], [5], [7]))),
-        (["a"], {"a": "A"}, create_df((["A"], [1], [3], [5], [7]))),
-        (["a", "b"], None, create_df((["a", "b"], [1, 2.0], [3, 4.0], [5, 6.0], [7, 8.0]))),
+        (None, create_df((["a", "b"], [1, 2.0], [3, 4.0], [5, 6.0], [7, 8.0]))),
+        (["a"], create_df((["a"], [1], [3], [5], [7]))),
+        (["a", "b"], create_df((["a", "b"], [1, 2.0], [3, 4.0], [5, 6.0], [7, 8.0]))),
     ],
     ids=[
         "all_columns_by_default",
         "specified_column",
-        "map_columns_names",
         "specified_columns",
     ],
 )
 def test_csv_converter_convert__convert_multiple_files_correctly(
     columns,
-    mapping,
     expected,
     output,
     create_two_csv_files,
@@ -198,7 +191,6 @@ def test_csv_converter_convert__convert_multiple_files_correctly(
         files_pattern,
         output=output_path,
         include_columns=columns,
-        columns_mapping=mapping,
     )
     # The order of the data from multiple files is not deterministic, so sort it.
     actual = duckdb.sql(f"FROM '{output_path}' ORDER BY a;").df()
@@ -215,7 +207,6 @@ def fits_convert_settings():
         data_header="TEST_HDU",
         data_columns=["col1", "col2"],
         meta_columns=["meta1", "meta2"],
-        names_map=dict(col1="column1"),
         output_format=FitsConvertingOutputFormat.PARQUET,
     )
 
@@ -362,7 +353,6 @@ async def test_fits_converter_convert__read_only_specific_columns(
         data_columns=data_columns,
         data_header="TEST_HDU",
         meta_columns=meta_columns,
-        names_map=None,
         output_format=FitsConvertingOutputFormat.PARQUET,
     )
     converter = create_fits_converter(settings)
@@ -376,34 +366,34 @@ async def test_fits_converter_convert__read_only_specific_columns(
     )
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("output_format", iter(FitsConvertingOutputFormat))
-async def test_fits_converter_convert__rename_columns(
-    output_format,
-    mocker,
-    fits_files,
-    tmp_path,
-    create_fits_converter,
-    fits_convert_settings,
-):
-    """Test that data/meta columns are renaming if requried."""
-    mocker.patch("gaia.data.converters.read_fits", return_value=TEST_FITS_TIME_SERIES)
-    settings = copy.copy(fits_convert_settings)
-    settings.output_format = output_format
-    converter = create_fits_converter(settings)
+# @pytest.mark.asyncio
+# @pytest.mark.parametrize("output_format", iter(FitsConvertingOutputFormat))
+# async def test_fits_converter_convert__rename_columns(
+#     output_format,
+#     mocker,
+#     fits_files,
+#     tmp_path,
+#     create_fits_converter,
+#     fits_convert_settings,
+# ):
+#     """Test that data/meta columns are renaming if requried."""
+#     mocker.patch("gaia.data.converters.read_fits", return_value=TEST_FITS_TIME_SERIES)
+#     settings = copy.copy(fits_convert_settings)
+#     settings.output_format = output_format
+#     converter = create_fits_converter(settings)
 
-    # Data from `read_fits()` has columns: ['column1', 'col2', 'meta1', 'meta2']
-    # and rename_map is 'col1' -> 'column1'.
-    expected = create_df(
-        (
-            ["column1", "col2", "meta1", "meta2"],
-            [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],
-        ),
-    )
-    inputs = f"{fits_files}/*1.fits"
-    await converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
-    actual = duckdb.sql(f"FROM '{tmp_path / f'1.{output_format.value}'}';").df()
-    assert_frame_equal(actual, expected, check_dtype=False)
+#     # Data from `read_fits()` has columns: ['column1', 'col2', 'meta1', 'meta2']
+#     # and rename_map is 'col1' -> 'column1'.
+#     expected = create_df(
+#         (
+#             ["column1", "col2", "meta1", "meta2"],
+#             [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],
+#         ),
+#     )
+#     inputs = f"{fits_files}/*1.fits"
+#     await converter.convert(inputs, tmp_path, re.compile(r"(?<=id_)\d*"))
+#     actual = duckdb.sql(f"FROM '{tmp_path / f'1.{output_format.value}'}';").df()
+#     assert_frame_equal(actual, expected, check_dtype=False)
 
 
 @pytest.mark.asyncio
@@ -427,7 +417,7 @@ async def test_fits_converter_convert__group_inputs_for_single_target_id(
 
     expected = create_df(
         (
-            ["column1", "col2", "meta1", "meta2"],
+            ["col1", "col2", "meta1", "meta2"],
             [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],  # Data from 'first_target_id_1.fits'
             [[1.0, 2.0, 3.0], [4.0, np.nan, 6.0], 1, "test"],  # Data from 'second_target_id_1.fits'
         ),
@@ -463,7 +453,7 @@ async def test_fits_converter_convert__create_output_dir_if_not_exist(
     mocker,
 ):
     """Test that the output directory is created if not exist."""
-    mocker.patch("gaia.data.converters.read_fits")
+    mocker.patch("gaia.data.converters.read_fits", return_value={})
     mocker.patch("gaia.data.converters.duckdb.execute")
 
     inputs = f"{fits_files}/*.fits"

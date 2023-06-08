@@ -39,22 +39,18 @@ class CsvConverter:
         inputs: PathOrPattern,
         output: Path | str,
         include_columns: Columns | None = None,
-        columns_mapping: dict[str, str] | None = None,
     ) -> None:
-        """Convert a csv file to json or parquet format with optional column renaming.
+        """Convert a csv file to json or parquet format.
 
         Args:
             filepath (PathOrPattern): Input csv file path or glob pattern to many csv files
             output (PathOrPattern): Path to the output file
             include_columns (Columns | None, optional): What columns to include in the output file.
                 If None then all columns will be included. Defaults to None.
-            columns_mapping (dict[str, str] | None, optional): Old to new column names mapping.
-                If None then no renaming is performed. Defaults to None.
 
         Raises:
             FileNotFoundError: Input file(s) not found
-            ValueError: Column to select or rename not found in the input file(s) OR unsupported
-                input/output file(s) formats
+            ValueError: Unsupported input/output file(s) formats
         """
         output = Path(output)
         log = logger.bind(input=inputs, output=output)
@@ -67,10 +63,6 @@ class CsvConverter:
         self._validate_input_files(input_filepaths)
         connection = duckdb.connect(":memory:")
         self._create_tmp_table(inputs, include_columns, connection)
-
-        if columns_mapping:
-            log.debug("Renaming columns")
-            self._rename_columns(inputs, columns_mapping, connection)
 
         output_file_extension = str(output).rpartition(".")[-1]
         compression = " (COMPRESSION ZSTD)" if output_file_extension == "parquet" else ""
@@ -94,22 +86,6 @@ class CsvConverter:
             raise ValueError(
                 f"{column} specified in 'include_columns' parameter not found in the source CSV {inputs}",  # noqa
             )
-
-    def _rename_columns(
-        self,
-        inputs: PathOrPattern,
-        columns_mapping: dict[str, str],
-        connection: duckdb.DuckDBPyConnection,
-    ) -> None:
-        for old_column, new_column in columns_mapping.items():
-            try:
-                connection.execute(
-                    f"ALTER TABLE {self._TMP_TABLE} RENAME {old_column} TO {new_column};",
-                )
-            except duckdb.BinderException:
-                raise ValueError(
-                    f"{old_column} specified in 'columns_mapping' parameter not found in the source CSV {inputs}",  # noqa
-                )
 
     def _validate_output_file(self, output: Path) -> None:
         if output.suffix not in self._SUPPORTED_OUTPUT_FILES:
@@ -137,8 +113,6 @@ class FitsConvertingSettings:
     """Data columns to read."""
     meta_columns: Columns | None
     """Metadata columns to read"""
-    names_map: dict[str, str] | None
-    """Mapping from old columns name to the new ones."""
     output_format: FitsConvertingOutputFormat
 
 
@@ -227,11 +201,6 @@ class FitsConverter:
     ) -> None:
         tmp_series: list[dict[str, Series | str | int | float]] = []
         for series in time_series:
-            if self._settings.names_map:
-                series = {
-                    self._settings.names_map.get(column, column): data
-                    for column, data in series.items()
-                }
             tmp_series.append(series)
 
         with open(self._tmp_time_series_path, "w") as f:
