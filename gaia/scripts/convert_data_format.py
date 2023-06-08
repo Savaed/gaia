@@ -12,7 +12,7 @@ from gaia.ui.cli import print_header
 async def main(cfg: AppConfig) -> int:
     prepare_loop(asyncio.get_running_loop())
     cfg = AppConfig(**OmegaConf.to_object(cfg))
-    print_header(None)
+    print_header(cfg.preprocessing.conversion.script_description)
 
     tce_converter = hydra.utils.instantiate(cfg.preprocessing.conversion.tce.converter)
     staller_converter = hydra.utils.instantiate(

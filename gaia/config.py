@@ -83,6 +83,7 @@ class ConverterConfig(GenericModel, Generic[TConverter]):
 
 
 class ConversionConfig(BaseModel):
+    script_description: str
     tce: ConverterConfig[BasicConverter]
     stellar_parameters: ConverterConfig[BasicConverter]
     time_series: ConverterConfig[TimeSeriesConverter]
