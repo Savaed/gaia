@@ -22,7 +22,6 @@ def downloader(tmp_path):
     saver = MagicMock(spec=FileSaver)
     instance = KeplerDownloader(
         saver=saver,
-        nasa_base_url=NASA_BASE_URL,
         mast_base_url=MAST_BASE_URL,
         cadence=Cadence.LONG,
     )
