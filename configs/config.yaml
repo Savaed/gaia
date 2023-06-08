@@ -48,7 +48,7 @@ download:
 preprocessing:
   tce_merge:
     script_description: Merge TCE data with other scalar data (e.g. KOI and/or CFP tables) to obtain TCE labels and Kepler names.
-    select_sql: SELECT tce.* REPLACE (tce_duration / 24 AS tce_duration), koi.* EXCLUDE(kepid), koi.kepid AS kepid_koi # Mark TCEs whose are not present in KOI and convert 'duration' from hours to days
+    select_sql: SELECT tce.*, koi.* EXCLUDE(kepid), koi.kepid AS kepid_koi # Mark TCEs whose are not present in KOI
     join_sql: "'${raw_tables_dir}/${download.tables_requests[0][1]}' tce LEFT JOIN '${raw_tables_dir}/${download.tables_requests[1][1]}' koi ON tce.kepid=koi.kepid AND tce.tce_plnt_num=koi.koi_tce_plnt_num LEFT JOIN '${raw_tables_dir}/cfp.csv' cfp ON koi.kepoi_name=cfp.kepoi_name WHERE tce.tce_rogue_flag=0"
     labels_case_sql:
       - WHEN koi.koi_disposition='CONFIRMED' THEN 'PC'
@@ -56,7 +56,7 @@ preprocessing:
       - WHEN cfp.fpwg_disp_status='CERTIFIED FA' OR kepid_koi IS NULL THEN 'NTP'
       - ELSE 'UNKNOWN'
     output: ${interim_tables_dir}/q1_q17_dr25_tce_merged.csv
-    label_column: label_text
+    label_column: label
 
   conversion:
     script_description: |
@@ -86,20 +86,6 @@ preprocessing:
           - tce_period
           - kepler_name
           - ${preprocessing.tce_merge.label_column}
-        columns_mapping:
-          kepid: target_id
-          tce_plnt_num: id
-          tce_cap_stat: opt_ghost_core_aperture_corr
-          tce_hap_stat: opt_ghost_halo_aperture_corr
-          boot_fap: bootstrap_false_alarm_proba
-          tce_rb_tcount0: rolling_band_fgt
-          tce_prad: radius
-          tcet_period: fitted_period
-          tce_depth: transit_depth
-          tce_time0bk: epoch
-          tce_duration: duration
-          tce_period: period
-          kepler_name: name
 
     stellar_parameters:
       converter:
@@ -115,12 +101,6 @@ preprocessing:
           - dens
           - logg
           - feh
-        columns_mapping:
-          kepid: id
-          teff: effective_temperature
-          dens: density
-          logg: surface_gravity
-          feh: metallicity
 
     time_series:
       converter:
@@ -129,119 +109,73 @@ preprocessing:
           data_header: LIGHTCURVE
           data_columns: [TIME, PDCSAP_FLUX, MOM_CENTR1, MOM_CENTR2]
           meta_columns: [KEPLERID, QUARTER]
-          names_map:
-            TIME: time
-            PDCSAP_FLUX: pdcsap_flux
-            MOM_CENTR1: mom_centr1
-            MOM_CENTR2: mom_centr2
-            KEPLERID: id
-            QUARTER: period
+
           output_format: parquet
       conversion_parameters:
         inputs: ${raw_time_series_dir}/*.fits
         output_dir: ${interim_time_series_dir}
         path_target_id_pattern: (?<=kplr)\d{9}
 
+ui:
+  script_description: Launch a website with scalar data visualization (TCE, stellar parameters and statistics) as well as time series.
+  assets_dir: gaia/ui/assets
+  external_stylesheets:
+    - https://use.fontawesome.com/releases/v6.4.0/css/all.css
+    - https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap
+  available_graphs:
+    pdcsap_flux: pdcsap_flux
+    centroid_shift: mom_centr1,mom_centr2
+  server_params:
+    debug: true
+    host: 127.0.0.1
+    port: 8050
+    dev_tools_hot_reload: true
+  graphs_preprocessing:
+    pdcsap_flux:
+      _target_: gaia.data.preprocessing.normalize_median
+      _partial_: true
+    mom_centr1,mom_centr2:
+      _target_: gaia.utils.compose
+      _args_:
+        - _target_: gaia.data.preprocessing.compute_euclidean_distance
+          _partial_: true
+        - _target_: gaia.data.preprocessing.normalize_median
+          _partial_: true
 
-# mission: KEPLER
-# data:
-#   raw_tables_dir: data/raw/tables
-#   raw_time_series_dir: /mnt/d/time_series
-#   interim_tables_dir: data/interim/tables
-#   interim_time_series_dir: data/interim/time_series
+data:
+  time_series_store:
+    _target_: gaia.data.stores.TimeSeriesStore
+    mapper:
+      _target_: gaia.data.mappers.map_kepler_time_series
+      _partial_: true
+    reader:
+      _target_: gaia.io.ParquetReader
+      data_dir: ${interim_time_series_dir}
 
-#   tce_merge:
-#     select_sql: SELECT tce.* REPLACE (tce_duration / 24 AS tce_duration), koi.* EXCLUDE(kepid), koi.kepid AS kepid_koi # Mark TCEs whose are not present in KOI and convert 'duration' from hours to days
-#     join_sql: "'${data.raw_tables_dir}/${data.load.api.requests[0][1]}' tce LEFT JOIN '${data.raw_tables_dir}/${data.load.api.requests[1][1]}' koi ON tce.kepid=koi.kepid AND tce.tce_plnt_num=koi.koi_tce_plnt_num LEFT JOIN '${data.raw_tables_dir}/cfp.csv' cfp ON koi.kepoi_name=cfp.kepoi_name WHERE tce.tce_rogue_flag=0"
-#     label_conditions_case_sql:
-#       - WHEN koi.koi_disposition='CONFIRMED' THEN 'PC'
-#       - WHEN cfp.fpwg_disp_status='CERTIFIED FP' THEN 'AFP'
-#       - WHEN cfp.fpwg_disp_status='CERTIFIED FA' OR kepid_koi IS NULL THEN 'NTP'
-#       - ELSE 'UNKNOWN'
-#     output_file: ${data.interim_tables_dir}/q1_q17_dr25_tce_merged.csv
+  tce_store:
+    _target_: gaia.data.stores.TceStore
+    mapper:
+      _target_: gaia.data.mappers.map_kepler_tce
+      _partial_: true
+    reader:
+      _target_: gaia.io.ParquetTableReader
+      filepath: ${preprocessing.conversion.tce.conversion_parameters.output}
+    parameters_schema:
+      target_id: kepid
+      tce_id: tce_plnt_num
+      name: kepler_name
+      label: label
+      duration: tce_duration
+      epoch: tce_time0bk
+      period: tce_period
 
-# ui:
-#   assets_dir: gaia/ui/assets
-#   external_stylesheets:
-#     - https://use.fontawesome.com/releases/v6.4.0/css/all.css
-#     - https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap
-#   available_graphs:
-#     pdcsap_flux: pdcsap_flux
-#     centroid_shift: mom_centr1,mom_centr2
-#   server_params:
-#     debug: true
-#     host: 127.0.0.1
-#     port: 8050
-#     dev_tools_hot_reload: true
-
-# time_series_store:
-#   _target_: gaia.data.stores.TimeSeriesStore
-#   mapper:
-#     _target_: gaia.data.mappers.map_kepler_time_series
-#     _partial_: true
-#   reader:
-#     _target_: gaia.io.ParquetReader
-#     data_dir: ${data.interim_time_series_dir}
-
-# tce_store:
-#   _target_: gaia.data.stores.TceStore
-#   mapper:
-#     _target_: gaia.data.mappers.map_kepler_tce
-#     _partial_: true
-#   reader:
-#     _target_: gaia.io.ParquetTableReader
-#     filepath: ${data.interim_tables_dir}/q1_q17_dr25_tce_merged.parquet
-#   parameters_schema:
-#     target_id: kepid
-#     tce_id: tce_plnt_num
-#     name: kepler_name
-#     label: label
-#     duration: tce_duration
-#     epoch: tce_time0bk
-#     period: tce_period
-
-# stellar_store:
-#   _target_: gaia.data.stores.StellarParametersStore
-#   mapper:
-#     _target_: gaia.data.mappers.map_kepler_stallar_parameters
-#     _partial_: true
-#   reader:
-#     _target_: gaia.io.ParquetTableReader
-#     filepath: ${data.interim_tables_dir}/q1_q17_dr25_stellar2.parquet
-#   parameters_schema:
-#     id: kepid
-
-# funcs:
-#   pdcsap_flux:
-#     _target_: gaia.data.preprocessing.normalize_median
-#     _partial_: true
-#   "mom_centr1,mom_centr2":
-#     _target_: gaia.utils.compose
-#     _args_:
-#       - _target_: gaia.data.preprocessing.compute_euclidean_distance
-#         _partial_: true
-#       - _target_: gaia.data.preprocessing.normalize_median
-#         _partial_: true
-
-# download:
-#   downloader:
-#     _target_: gaia.downloaders.KeplerDownloader
-#     saver:
-#       _target_: gaia.io.FileSaver
-#       tables_dir: ${data.raw_tables_dir}
-#       time_series_dir: ${data.raw_time_series_dir}
-#     cadence: llc
-#     mast_base_url: https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:Kepler/url/missions/kepler/lightcurves
-#     nasa_base_url: https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI
-#     num_async_requests: 25
-#   skip_tables: true
-#   tce_file: ${data.raw_tables_dir}/q1_q17_dr25_tce.csv
-#   target_id_column: kepid
-#   verbose: true
-#   requests:
-#     - - ${data.load.api.nasa_base_url}?table=q1_q17_dr25_tce&columns=kepid,tce_plnt_num,tce_rogue_flag,tce_period,tce_time0bk,tce_time0,tce_duration,tce_depth,tce_prad,tcet_period,boot_fap,tce_cap_stat,tce_hap_stat,tce_rb_tcount0&format=csv
-#       - q1_q17_dr25_tce.csv
-#     - - ${data.load.api.nasa_base_url}?table=q1_q17_dr25_koi&columns=kepid,kepoi_name,kepler_name,koi_disposition,koi_pdisposition,koi_tce_plnt_num&format=csv
-#       - q1_q17_dr25_koi.csv
-#     - - ${data.load.api.nasa_base_url}?table=q1_q17_dr25_stellar&columns=kepid,teff,radius,mass,dens,logg,feh&format=csv
-#       - q1_q17_dr25_stellar.csv
+  stellar_store:
+    _target_: gaia.data.stores.StellarParametersStore
+    mapper:
+      _target_: gaia.data.mappers.map_kepler_stallar_parameters
+      _partial_: true
+    reader:
+      _target_: gaia.io.ParquetTableReader
+      filepath: ${interim_tables_dir}/q1_q17_dr25_stellar2.parquet
+    parameters_schema:
+      id: kepid
