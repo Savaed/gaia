@@ -16,9 +16,30 @@ def normalize_median(series: Series) -> Series:
     return series / np.nanmedian(series)
 
 
-def phase_fold_time(period: float, epoch: float, time: Series) -> Series:
+def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
+    """Create a phase-folded time vector.
+
+    Args:
+        time (Series): 1D array of time values
+        epoch (float): First transit occurrence. This value is mapped to zero
+        period (float): Period to fold over
+
+    Raises:
+        ValueError: `period` <= 0 OR `time` is not 1D
+
+    Returns:
+        Series: 1D numpy array folded around a `period` with time values within
+            `[-period / 2, period / 2]`
+    """
+    if period <= 0:
+        raise ValueError(f"Expected 'period' > 0, but got {period=}")
+    if time.ndim != 1:
+        raise ValueError(f"Expected 'time' to be 1D, but got {time.ndim}D")
+
     half_period = period / 2
-    return np.mod(time + (half_period - epoch), period) - half_period
+    folded_time = np.mod(time + (half_period - epoch), period)
+    folded_time -= half_period
+    return folded_time
 
 
 # TODO: Change to `transit_strategy` later
@@ -31,7 +52,7 @@ def compute_transits(
 
     for tce in tces:
         tce_name = tce.name or str(tce.id)
-        folded_time = phase_fold_time(tce.event.period, tce.event.epoch, time)
+        folded_time = phase_fold_time(time, epoch=tce.event.epoch, period=tce.event.period)
         transits_mask = [
             tce_name if np.abs(current_time) <= tce.event.duration else transit_marker
             for current_time, transit_marker in zip(folded_time, transits_mask)
