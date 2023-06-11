@@ -1,3 +1,5 @@
+from typing import Iterable
+
 import numpy as np
 import numpy.typing as npt
 
@@ -59,3 +61,41 @@ def compute_transits(
         ]
 
     return np.array(transits_mask)
+
+
+def split_arrays(
+    time: Iterable[Series],
+    series: Iterable[Series],
+    gap_with: float = 0.75,
+) -> tuple[list[Series], list[Series]]:
+    """Split time series at gaps.
+
+    Args:
+        time (Iterable[Series]): A sequence of 1D arrays of time values
+        series (Iterable[Series]): A sequence of 1D arrays of time series features corresponding to
+        the `time`
+        gap_with (float, optional): Minimum time gap (in units of time) for split. Defaults to 0.75.
+
+    Raises:
+        ValueError: `gap_width` < 0 OR any of `time` or `series` values has dimension != 1
+
+    Returns:
+        tuple[list[Series], list[Series]]: Splitted time and series arrays
+    """
+    if gap_with <= 0:
+        raise ValueError(f"Expected 'gap_width' > 0, but got {gap_with=}")
+
+    if any((t.ndim != 1 for t in time)) or any((s.ndim != 1 for s in series)):
+        raise ValueError(
+            "Expected all series in 'time' and 'series' be 1D, but at least one is not",
+        )
+
+    out_series: list[Series] = []
+    out_time: list[Series] = []
+    split_indicies = [np.argwhere(np.diff(t) > gap_with).flatten() + 1 for t in time]
+
+    for time_segment, series_segment, split_indx in zip(time, series, split_indicies):
+        out_time.extend(np.array_split(time_segment, split_indx))
+        out_series.extend(np.array_split(series_segment, split_indx))
+
+    return out_time, out_series
