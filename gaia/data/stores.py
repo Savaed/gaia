@@ -46,8 +46,8 @@ class TimeSeriesStore(Generic[TTimeSeries]):
         Args:
             target_id (Id): Target ID
             periods (tuple[str, ...] | None, optional): The observation periods for which time
-                series should be returned. If None or empty tuple, the time series for all available
-                periods will be returned. Defaults to None.
+            series should be returned. If None or empty tuple, the time series for all available
+            periods will be returned. Defaults to None.
 
         Raises:
             DataNotFoundError: The requested time series was not found
@@ -56,7 +56,7 @@ class TimeSeriesStore(Generic[TTimeSeries]):
 
         Returns:
             list[TTimeSeries]: A list of time series, each for an observation period, sorted by a
-                period in ascending order
+            period in ascending order
         """
         try:
             results = self._reader.read_by_id(id)

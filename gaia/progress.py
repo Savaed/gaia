@@ -51,14 +51,9 @@ class JobsCompleteColumn(progress.MofNCompleteColumn):
 
 
 class ProgressBar(progress.Progress):
+    """Custom version of `rich.Progress` to track tasks and display progress bar(s)."""
+
     def __init__(self, file_transfer: bool = False, **kwargs: Any) -> None:
-        """Custom version of `rich.Progress` to track tasks and display progress bar(s).
-
-        Args:
-            file_transfer (bool, optional): Whether to use a file download progress column or
-                a normal completed tasks column. Defaults to False.
-        """
-
         now = datetime.now()
         spinner_name = (
             "christmas"

@@ -40,12 +40,12 @@ def plot_time_series(
         x (str): Name of X axis data
         y (str): Name of Y axis data
         hover_data (list[str] | None, optional): What to display when hover on data points.
-            Defaults to None.
+        Defaults to None.
         color (str | None, optional): Specify by what markers should be colorized. Defaults to None.
         period_edges (Iterable[float] | None, optional): Endpoint of observation period.
-            Defaults to None.
+        Defaults to None.
         margins: (Margins | None, optional): Margins for plot in `px` units.
-            If None then `Margins(left=0, rigth=0, bottom=0, top=30)` is used. Defaults to None
+        If None then `Margins(left=0, rigth=0, bottom=0, top=30)` is used. Defaults to None
         **kwargs (Any): Named parameters than should be passed to `px.scatter()` function
 
     Returns:
@@ -86,7 +86,7 @@ def plot_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, go
 
     Returns:
         tuple [go.Figure, go.Figure]: Orbital period and transit duration histograms, with the
-            x-axis on a logarithmic scale
+        x-axis on a logarithmic scale
     """
     return (
         px.histogram(

@@ -46,7 +46,7 @@ class CsvConverter:
             filepath (PathOrPattern): Input csv file path or glob pattern to many csv files
             output (PathOrPattern): Path to the output file
             include_columns (Columns | None, optional): What columns to include in the output file.
-                If None then all columns will be included. Defaults to None.
+            If None then all columns will be included. Defaults to None.
 
         Raises:
             FileNotFoundError: Input file(s) not found
@@ -149,7 +149,7 @@ class FitsConverter:
         Raises:
             FileNotFoundError: Input file not found if passed a single file path as a Path object
             ConverterError: Cannot read FITS files (invalid file/header/columns) OR cannot save
-                converted files
+            converted files
             CancelledError: Task has been cancelled
 
         Args:

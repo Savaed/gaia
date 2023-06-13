@@ -18,7 +18,7 @@ async def shutdown(exit_signal: signal.Signals | None = None) -> None:
 
     Args:
         exit_signal (signal.Signals | None, optional): Exit signal which caused shutdown procedure.
-            Defaults to None.
+        Defaults to None.
     """
     if exit_signal:
         logger.info(f"Received {exit_signal.name} exit signal")
@@ -39,7 +39,7 @@ def set_signals_handler(
         loop (_EventLoop): Event loop
         handler (_Handler): Handler to be called when the signal received
         exit_signals (set[signal.Signals] | None, optional): Signals to be handled.
-            If not specified, `SIGINT`, `SIGTERM`, and `SIGHUP` will be handled. Defaults to None.
+        If not specified, `SIGINT`, `SIGTERM`, and `SIGHUP` will be handled. Defaults to None.
     """
     exit_signals = exit_signals or {signal.SIGINT, signal.SIGHUP, signal.SIGTERM}
     for exit_signal in exit_signals:

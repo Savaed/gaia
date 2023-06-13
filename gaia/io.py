@@ -65,9 +65,9 @@ def read_fits(
         filepath (str | Path): FITS file path
         data_header (str | int): HDU extension for data. If `int` then it is zero-indexed
         columns (Columns | None, optional): Data columns/fields to read. If None then all columns
-            will be read. If empty sequence then no data will be returned. Defaults to None.
+        will be read. If empty sequence then no data will be returned. Defaults to None.
         meta (Columns | None, optional): Metadata columns/fields to read. If None then all columns
-            will be read. If empty sequence then no data will be returned. Defaults to None.
+        will be read. If empty sequence then no data will be returned. Defaults to None.
 
     Raises:
         KeyError: Invalid data extension OR invalid data/metadata column
@@ -209,9 +209,9 @@ class ParquetTableReader:
 
         Args:
             columns (Iterable[str] | None, optional): Table columns to read. If None or empty then
-                read all available columns. Defaults to None.
+            read all available columns. Defaults to None.
             where_sql (str | None, optional): SQL-like query to filter read records. Must start with
-                'WHERE' statement. Defaults to None.
+            'WHERE' statement. Defaults to None.
 
         Raises:
             MissingColumnError: Column(s) not found in the source file
@@ -219,7 +219,7 @@ class ParquetTableReader:
 
         Returns:
             list[dict[str, Any]]: Records that match the `where_sql` condition with the specified
-                columns read from the source file
+            columns read from the source file
         """
         if not self._filepath.is_file():
             raise ReaderError(f"No file {self._filepath} found")
