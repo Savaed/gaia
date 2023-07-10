@@ -5,19 +5,9 @@ import hydra
 from omegaconf import OmegaConf
 
 from gaia.config import AppConfig
+from gaia.data.converters import DUCKDB_COPY_ARGS
 from gaia.log import logger
 from gaia.ui.cli import print_header
-
-
-def get_copy_args(output: Path) -> str:
-    match output.suffix:
-        case ".csv":
-            copy_args = "WITH (HEADER 1);"
-        case ".parquet":
-            copy_args = "(COMPRESSION ZSTD);"
-        case _:
-            copy_args = ";"
-    return copy_args
 
 
 def merge_tce_file(
@@ -29,7 +19,7 @@ def merge_tce_file(
 ) -> None:
     logger.info("Merging and labeling TCEs")
     case_when_sql = " ".join(label_conditions)
-    copy_args = get_copy_args(output)
+    copy_args = DUCKDB_COPY_ARGS.get(output.suffix, ";")
     tce_label_sql = f"CASE {case_when_sql} END AS '{label_column}'"
     merge_sql = f"COPY ({select_sql}, {tce_label_sql} FROM {join_sql}) TO '{output}' {copy_args}"
     duckdb.execute(merge_sql)

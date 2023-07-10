@@ -21,6 +21,8 @@ from gaia.progress import ProgressBar
 
 PathOrPattern: TypeAlias = Path | str
 
+DUCKDB_COPY_ARGS = {".csv": "(HEADER 1);", ".parquet": "(COMPRESSION ZSTD);"}
+
 
 class UnsupportedFileFormatError(Exception):
     """Raised when the file is in an unsupported format."""
@@ -64,9 +66,8 @@ class CsvConverter:
         connection = duckdb.connect(":memory:")
         self._create_tmp_table(inputs, include_columns, connection)
 
-        output_file_extension = str(output).rpartition(".")[-1]
-        compression = " (COMPRESSION ZSTD)" if output_file_extension == "parquet" else ""
-        connection.execute(f"COPY {self._TMP_TABLE} TO '{output}'{compression};")
+        copy_args = DUCKDB_COPY_ARGS.get(output.suffix, ";")
+        connection.execute(f"COPY {self._TMP_TABLE} TO '{output}' {copy_args}")
         connection.execute(f"FROM '{output}' LIMIT 1;")  # Validate the converted file
         log.info("File converted")
 
