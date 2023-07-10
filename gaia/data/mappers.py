@@ -2,7 +2,12 @@ from typing import Callable, TypeAlias, TypeVar
 
 import numpy as np
 
-from gaia.data.models import KeplerTimeSeries, RawKeplerTimeSeries
+from gaia.data.models import (
+    KeplerStellarParameters,
+    KeplerTimeSeries,
+    RawKeplerStellarParameter,
+    RawKeplerTimeSeries,
+)
 
 
 T = TypeVar("T")
@@ -26,3 +31,18 @@ def map_kepler_time_series(source: RawKeplerTimeSeries) -> KeplerTimeSeries:
         )
     except KeyError as ex:
         raise MapperError(f"Key '{ex}' not found in the source RawKeplerTimeSeries object")
+
+
+def map_kepler_stallar_parameters(source: RawKeplerStellarParameter) -> KeplerStellarParameters:
+    try:
+        return KeplerStellarParameters(
+            id=source["kepid"],
+            effective_temperature=source["teff"],
+            radius=source["radius"],
+            mass=source["mass"],
+            density=source["dens"],
+            surface_gravity=source["logg"],
+            metallicity=source["feh"],
+        )
+    except KeyError as ex:
+        raise MapperError(f"Key '{ex}' not found in the source RawKeplerStellarParameter object")
