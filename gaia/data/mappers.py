@@ -53,6 +53,14 @@ def map_kepler_stallar_parameters(source: RawKeplerStellarParameter) -> KeplerSt
 
 
 def map_tce_label(label: str) -> TceLabel:
+    """Map text TCE label to `TceLabel` enumeration.
+
+    Args:
+        label (str): Text TCE label
+
+    Returns:
+        TceLabel: Enum if its `value` or `name` matches `label`, `TceLabel.UNKNOWN` otherwise.
+    """
     try:
         return TceLabel[label]
     except KeyError:
