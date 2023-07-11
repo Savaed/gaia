@@ -27,14 +27,21 @@ def compute_euclidean_distance(series: Series) -> Series:
 
 
 def normalize_median(series: Series) -> Series:
-    """Normalize a sequence of values by dividing a median from it (ignoring NaN values).
+    """Normalize a 1D array of values by dividing it by its median (ignoring NaN values).
 
     Args:
-        series (Series): Array of values
+        series (Series): 1D array of values
+
+    Raises:
+        ValueError: `series` is not 1D
 
     Returns:
-        Series: Normalized values: `series / median(series)`
+        Series: Normalized values as: `series / median(series)`
     """
+    ndim = series.ndim
+    if ndim != 1:
+        raise ValueError(f"Expected 'series' to be 1D, but got {ndim}D")
+
     return series / np.nanmedian(series)
 
 
@@ -70,6 +77,21 @@ def compute_transits(
     time: Series,
     default: str = "no detected",
 ) -> AnySeries:
+    """Determine whether there is a TCE transit for the time series.
+
+    Args:
+        tces(Iterable [TCE]): Sequence of TCEs
+        time (Series): 1D array of time values
+        default (str, optional): Text for non-transit points. Defaults to "not detected"
+
+    Returns:
+        AnySeries: A mask indicating for which time values TCE transit occurs. For transit
+        points the name or ID of TCE will be included in the transit mask.
+    """
+    ndim = time.ndim
+    if ndim != 1:
+        raise ValueError(f"Expected 'time' to be 1D, but got {ndim}D")
+
     transits_mask = [default] * len(time)
 
     for tce in tces:
