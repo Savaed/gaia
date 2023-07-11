@@ -42,11 +42,12 @@ def render_insight(*, icon: str, icon_color: str, header: str, text: str, footer
     )
 
 
-def render_rows(data: dict[str, Any]) -> list[html.Div]:
+def render_rows(data: dict[str, Any], units: dict[str, str]) -> list[html.Div]:
     rows: list[html.Div] = []
     for field, value in data.items():
-        # Escape Enum <name, value> representation as it cannot be render via Dash (unsafe html).
+        unit = units.get(field)
 
+        # Escape Enum <name, value> representation as it cannot be render via Dash (unsafe html).
         if isinstance(value, Enum):
             field_value = value.value
         elif isinstance(value, (int, float)):
@@ -56,14 +57,23 @@ def render_rows(data: dict[str, Any]) -> list[html.Div]:
 
         rows.append(
             html.Div(
-                [html.H3(f"{field}:"), html.P(field_value, className="text-muted")],
+                [
+                    html.H3(
+                        [html.Span(unit, className="tooltip-text") if unit else None, field],
+                        className="tooltip",
+                    ),
+                    html.P(field_value, className="text-muted"),
+                ],
                 className="data-row",
             ),
         )
     return rows
 
 
-def render_stellar_parameters_overview(stellar_params: StellarParameters) -> html.Div:
+def render_stellar_parameters_overview(
+    stellar_params: StellarParameters,
+    units: dict[str, str],
+) -> html.Div:
     params = flatten_dict(asdict(stellar_params))
     return html.Div(
         [
@@ -75,7 +85,7 @@ def render_stellar_parameters_overview(stellar_params: StellarParameters) -> htm
                 ],
                 className="stellar-parameters-overview",
             ),
-            html.Div(render_rows(params), className="data-rows"),
+            html.Div(render_rows(params, units), className="data-rows"),
         ],
         className="stellar-parameters",
     )
@@ -101,7 +111,7 @@ def render_stellar_parameters() -> html.Div:
             raise PreventUpdate
 
         params = data["stellar_parameters"]
-        return render_stellar_parameters_overview(params)
+        return render_stellar_parameters_overview(params, store["stellar_parameters_units"])
 
     logger.info("Render initial stellar parameters layout")
     return html.Div(
@@ -142,7 +152,7 @@ TCE_LABELS_COLORS = {
 }
 
 
-def render_tce(tce: TCE) -> html.Div:
+def render_tce(tce: TCE, units: dict[str, str]) -> html.Div:
     tce_dict = flatten_dict(asdict(tce))
     icon_color, icon_background_color = TCE_LABELS_COLORS[tce.label]
 
@@ -175,7 +185,7 @@ def render_tce(tce: TCE) -> html.Div:
                         ),
                     ),
                     html.Div(
-                        render_rows(tce_dict),
+                        render_rows(tce_dict, units),
                         className="tce-details data-rows",
                     ),
                 ],
@@ -261,7 +271,7 @@ def render_tces() -> html.Div:
             raise PreventUpdate
 
         tces = data["tces"]
-        return [render_tce(tce) for tce in tces]
+        return [render_tce(tce, store["planetary_parameters_units"]) for tce in tces]
 
     logger.info("Render initial TCEs layout")
     return html.Div(
@@ -489,7 +499,11 @@ def render_tce_labels_distribution(labels_distribution: dict[TceLabel, int]) -> 
     return html.Div(dcc.Graph(figure=fig), className="insight")
 
 
-def create_dashboard(available_time_series_graphs: dict[str, str]) -> html.Div:
+def create_dashboard(
+    available_time_series_graphs: dict[str, str],
+    planetary_parameters_units: dict[str, str],
+    stellar_parameters_units: dict[str, str],
+) -> html.Div:
     try:
         tce_store, _, _ = get_data_stores()
     except KeyError as ex:
@@ -583,7 +597,12 @@ def create_dashboard(available_time_series_graphs: dict[str, str]) -> html.Div:
             dcc.Store(
                 id=ComponentIds.GLOBAL_STORE,
                 storage_type="local",
-                data=GlobalStore(redis_data_key="", available_graphs=available_time_series_graphs),
+                data=GlobalStore(
+                    redis_data_key="",
+                    available_graphs=available_time_series_graphs,
+                    stellar_parameters_units=stellar_parameters_units,
+                    planetary_parameters_units=planetary_parameters_units,
+                ),
             ),
         ],
         className="app-container",

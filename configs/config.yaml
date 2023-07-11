@@ -141,6 +141,20 @@ ui:
           _partial_: true
         - _target_: gaia.data.preprocessing.normalize_median
           _partial_: true
+  stellar_parameters_units:
+    effective_temperature: K
+    radius: Solar radii
+    mass: Solar mass
+    density: gm/cm^3
+    surface_gravity: log10(cm/s^2)
+    metallicity: dex
+  planetary_parameters_units:
+    epoch: days
+    duration: days
+    period: days
+    radius: Earth radii
+    fitted_period: days
+    transit_depth: ppm
 
 data:
   time_series_store:

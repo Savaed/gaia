@@ -80,6 +80,8 @@ class RedisStore:
 class GlobalStore(TypedDict):
     redis_data_key: str
     available_graphs: dict[str, str]
+    planetary_parameters_units: dict[str, str]
+    stellar_parameters_units: dict[str, str]
 
 
 class AllData(TypedDict):

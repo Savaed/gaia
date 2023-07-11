@@ -27,7 +27,11 @@ def main(cfg: AppConfig) -> int:
         assets_folder=cfg.ui.assets_dir.absolute().as_posix(),
         external_stylesheets=cfg.ui.external_stylesheets,
     )
-    app.layout = create_dashboard(cfg.ui.available_graphs)
+    app.layout = create_dashboard(
+        available_time_series_graphs=cfg.ui.available_graphs,
+        stellar_parameters_units=cfg.ui.stellar_parameters_units,
+        planetary_parameters_units=cfg.ui.planetary_parameters_units,
+    )
     app.run(**cfg.ui.server_params.dict())
     return 0
 

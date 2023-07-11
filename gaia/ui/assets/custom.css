@@ -657,3 +657,22 @@ input.target-or-tce-search-bar {
     grid-template-columns: repeat(2, 1fr);
     gap: 1.6rem;
 }
+
+/*  --------- TOOLTIP ----------- */
+
+.tooltip .tooltip-text {
+    visibility: hidden;
+    background-color: var(--color-dark);
+    color: var(--color-background);
+    text-align: center;
+    border-radius: var(--border-radius-1);
+    padding: 2px 6px;
+    font-weight: 500;
+    position: absolute;
+    right: 350px;
+    z-index: 1;
+}
+
+.tooltip:hover .tooltip-text {
+    visibility: visible;
+}

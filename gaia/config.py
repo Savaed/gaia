@@ -147,6 +147,8 @@ class UiConfig(BaseModel):
     available_graphs: dict[str, str]
     server_params: DashRunParameters
     graphs_preprocessing: dict[str, Any]
+    stellar_parameters_units: dict[str, str]
+    planetary_parameters_units: dict[str, str]
 
 
 class AppConfig(BaseModel):
