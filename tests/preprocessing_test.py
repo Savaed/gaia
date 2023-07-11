@@ -164,6 +164,7 @@ def test_phase_fold_time__invalid_parameters(time, period):
             ),
         ),
     ],
+    ids=["empty_segments", "empty_series", "single_segment", "multiple_segments"],
 )
 def test_split_arrays__return_correct_data(time, series, expected):
     """Test that time and time series features are properly split."""
@@ -188,8 +189,8 @@ def test_split_arrays__invalid_gap_width(gap_width):
         ([np.arange(10)], [np.arange(10).reshape((2, 5))]),
     ],
     ids=[
-        "good_series_bad_time",
-        "good_time_bad_series",
+        "2D_series_1D_time",
+        "1D_time_2D_series",
     ],
 )
 def test_split_arrays__invalid_time_or_series_dimensions(time, series):

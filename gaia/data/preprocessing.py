@@ -1,12 +1,24 @@
-from typing import Iterable
+from typing import Iterable, TypeAlias
 
 import numpy as np
-import numpy.typing as npt
 
-from gaia.data.models import TCE, Series
+from gaia.data.models import TCE, AnySeries, Series
 
 
 def compute_euclidean_distance(series: Series) -> Series:
+    """Compute euclidean distance between points in 2D array.
+
+    Euclidean distance (norm 2) is as follow: `sqrt(x^2+y^2)`
+
+    Args:
+        series (Series): 2D array of float values
+
+    Raises:
+        ValueError: `series` is not 2D
+
+    Returns:
+        Series: 1D array of euclidean distance for each pair of points from `series`
+    """
     ndim = series.ndim
     if ndim != 2:
         raise ValueError(f"Expected 'series' to be 2D, but got {ndim}D")
@@ -15,6 +27,14 @@ def compute_euclidean_distance(series: Series) -> Series:
 
 
 def normalize_median(series: Series) -> Series:
+    """Normalize a sequence of values by dividing a median from it (ignoring NaN values).
+
+    Args:
+        series (Series): Array of values
+
+    Returns:
+        Series: Normalized values: `series / median(series)`
+    """
     return series / np.nanmedian(series)
 
 
@@ -46,10 +66,10 @@ def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
 
 # TODO: Change to `transit_strategy` later
 def compute_transits(
-    tces: list[TCE],
+    tces: Iterable[TCE],
     time: Series,
     default: str = "no detected",
-) -> npt.NDArray[np.object_]:
+) -> AnySeries:
     transits_mask = [default] * len(time)
 
     for tce in tces:
@@ -63,24 +83,27 @@ def compute_transits(
     return np.array(transits_mask)
 
 
+MultiSegmentSeries: TypeAlias = list[Series]
+
+
 def split_arrays(
-    time: Iterable[Series],
-    series: Iterable[Series],
+    time: MultiSegmentSeries,
+    series: MultiSegmentSeries,
     gap_with: float = 0.75,
-) -> tuple[list[Series], list[Series]]:
+) -> tuple[MultiSegmentSeries, MultiSegmentSeries]:
     """Split time series at gaps.
 
     Args:
-        time (Iterable[Series]): A sequence of 1D arrays of time values
-        series (Iterable[Series]): A sequence of 1D arrays of time series features corresponding to
-        the `time`
+        time (MultiSegmentSeries): A list of 1D arrays of time values
+        series (MultiSegmentSeries): A list of 1D arrays of time series features corresponding
+        to the `time`
         gap_with (float, optional): Minimum time gap (in units of time) for split. Defaults to 0.75.
 
     Raises:
-        ValueError: `gap_width` < 0 OR any of `time` or `series` values has dimension != 1
+        ValueError: `gap_width` <= 0 OR any of `time` or `series` values has dimension != 1
 
     Returns:
-        tuple[list[Series], list[Series]]: Splitted time and series arrays
+        tuple[MultiSegmentSeries_, MultiSegmentSeries_]: Splitted time and series arrays
     """
     if gap_with <= 0:
         raise ValueError(f"Expected 'gap_width' > 0, but got {gap_with=}")
@@ -90,12 +113,12 @@ def split_arrays(
             "Expected all series in 'time' and 'series' be 1D, but at least one is not",
         )
 
-    out_series: list[Series] = []
-    out_time: list[Series] = []
+    out_series: MultiSegmentSeries = []
+    out_time: MultiSegmentSeries = []
     split_indicies = [np.argwhere(np.diff(t) > gap_with).flatten() + 1 for t in time]
 
-    for time_segment, series_segment, split_indx in zip(time, series, split_indicies):
-        out_time.extend(np.array_split(time_segment, split_indx))
-        out_series.extend(np.array_split(series_segment, split_indx))
+    for time_segment, series_segment, split_index in zip(time, series, split_indicies):
+        out_time.extend(np.array_split(time_segment, split_index))
+        out_series.extend(np.array_split(series_segment, split_index))
 
     return out_time, out_series
