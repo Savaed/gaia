@@ -1,13 +1,12 @@
 import asyncio
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Callable, Mapping, TypeAlias
+from typing import Any, Callable, Mapping, TypeAlias
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
-from pyparsing import Any
 
 
 @pytest.fixture
