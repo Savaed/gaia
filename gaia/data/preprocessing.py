@@ -1,8 +1,8 @@
-from typing import Iterable, TypeAlias
+from typing import Iterable, Protocol, TypeAlias
 
 import numpy as np
 
-from gaia.data.models import TCE, AnySeries, Series
+from gaia.data.models import TCE, AnySeries, PeriodicEvent, Series
 
 
 def compute_euclidean_distance(series: Series) -> Series:
@@ -71,7 +71,6 @@ def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
     return folded_time
 
 
-# TODO: Change to `transit_strategy` later
 def compute_transits(
     tces: Iterable[TCE],
     time: Series,
@@ -142,5 +141,71 @@ def split_arrays(
     for time_segment, series_segment, split_index in zip(time, series, split_indicies):
         out_time.extend(np.array_split(time_segment, split_index))
         out_series.extend(np.array_split(series_segment, split_index))
+
+    return out_time, out_series
+
+
+class EventWidthStrategy(Protocol):
+    def __call__(self, period: float, duration: float) -> float:
+        ...
+
+
+class AdjustedPadding:
+    """Compute the event time duration as `min(3*duration, abs(weak_secondary_phase), period)`."""
+
+    def __init__(self, secondary_phase: float) -> None:
+        self._secondary_phase = secondary_phase
+
+    def __call__(self, period: float, duration: float) -> float:
+        return min(3 * duration, abs(self._secondary_phase), period)
+
+
+def remove_events(
+    time: MultiSegmentSeries,
+    tce_events: Iterable[PeriodicEvent],
+    series: MultiSegmentSeries,
+    event_width_calc: EventWidthStrategy,
+    include_empty_segments: bool = True,
+) -> tuple[MultiSegmentSeries, MultiSegmentSeries]:
+    """Remove transit events from a time series.
+
+    Args:
+        time (MultiSegmentSeries): A list of 1D arrays of time values
+        series (MultiSegmentSeries): A list of 1D arrays of time series features corresponding
+        to the `time`
+        tce_events (Iterable[PeriodicEvent]): TCE transit events
+        event_width_calc (EventWidthStrategy): Callable to compute a width of transits to remove
+        include_empty_segments (bool, optional): Whether to include empty segments. Defaults to
+        True.
+
+    Raises:
+        ValueError: No `tce_events` provided OR lengths of `time` and `series` are different OR any
+        of `time` or `series` values has dimension != 1
+
+    Returns:
+        tuple[MultiSegmentSeries, MultiSegmentSeries]: `time` and `series` with events removed.
+    """
+    if not tce_events:
+        raise ValueError("No tce events provided")
+    if any((t.ndim != 1 for t in time)) or any((s.ndim != 1 for s in series)):
+        raise ValueError(
+            "Expected all segments in 'time' and 'series' be 1D, but at least one is not",
+        )
+
+    out_time: MultiSegmentSeries = []
+    out_series: MultiSegmentSeries = []
+
+    for time_segment, series_segment in zip(time, series, strict=True):
+        transit_mask = np.ones_like(time_segment)
+
+        for event in tce_events:
+            folded_time = phase_fold_time(time_segment, epoch=event.epoch, period=event.period)
+            transit_distance = np.abs(folded_time)
+            event_width = event_width_calc(event.period, event.duration)
+            transit_mask = np.logical_and(transit_mask, transit_distance > 0.5 * event_width)
+
+        if include_empty_segments or transit_mask.any():
+            out_time.append(time_segment[transit_mask])
+            out_series.append(series_segment[transit_mask])
 
     return out_time, out_series

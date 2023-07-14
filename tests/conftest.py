@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from gaia.data.models import AnySeries, IntSeries, Series
+
 
 @pytest.fixture
 def http_response(request):
@@ -78,3 +80,18 @@ def save_to_file(tmp_path: Path) -> Callable[[str], Path]:
         return filepath
 
     return _save
+
+
+IterableOfArrays: TypeAlias = Iterable[AnySeries | IntSeries | Series]
+
+
+def assert_iterable_of_arrays_equal(arrays_1: IterableOfArrays, arrays_2: IterableOfArrays) -> None:
+    """Assert that all numpy arrays in two iterables `arrays_1` and `arrays_2` are equal as follows:
+    `arrays_1[i] == arrays_2[i]`.
+
+    Args:
+        arrays_1 (Iterable[AnySeries]): First iterable of numpy arrays
+        arrays_2 (Iterable[AnySeries]): Second iterable of numpy arrays
+    """
+    is_equal = [np.array_equal(array_1, array_2) for array_1, array_2 in zip(arrays_1, arrays_2)]
+    assert all(is_equal)

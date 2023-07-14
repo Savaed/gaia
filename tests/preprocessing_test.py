@@ -4,12 +4,15 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from gaia.data.models import TCE, PeriodicEvent, TceLabel
 from gaia.data.preprocessing import (
+    AdjustedPadding,
     compute_euclidean_distance,
     compute_transits,
     normalize_median,
     phase_fold_time,
+    remove_events,
     split_arrays,
 )
+from tests.conftest import assert_iterable_of_arrays_equal
 
 
 @pytest.fixture(params=["simple", "large_epoch", "negative_epoch", "negative_time"])
@@ -177,8 +180,8 @@ def test_split_arrays__return_correct_data(time, series, expected):
     """Test that time and time series features are properly split."""
     actual_time, actual_series = split_arrays(time, series)
     expected_time, expected_series = expected
-    assert all([np.array_equal(left, right) for left, right in zip(actual_time, expected_time)])
-    assert all([np.array_equal(left, right) for left, right in zip(actual_series, expected_series)])
+    assert_iterable_of_arrays_equal(actual_time, expected_time)
+    assert_iterable_of_arrays_equal(actual_series, expected_series)
 
 
 @pytest.mark.parametrize("gap_width", [-1.0, 0.0])
@@ -317,3 +320,126 @@ def test_compute_transits__invalid_time_dimension():
     time = np.arange(10.0).reshape((2, 5))
     with pytest.raises(ValueError):
         compute_transits([tce], time)
+
+
+@pytest.mark.parametrize(
+    "period,duration,secondary_phase,expected",
+    [
+        (1, 0.5, 1.2, 1),
+        (1, 0.3, 1.2, 0.9),
+        (1, 0.5, 0.3, 0.3),
+        (1, 0.5, -0.3, 0.3),
+    ],
+)
+def test_adjasted_padding__case(period, duration, secondary_phase, expected):
+    """Test that event width is correctly computed."""
+    adjusted_padding = AdjustedPadding(secondary_phase)
+    actual = adjusted_padding(period, duration)
+    assert actual == pytest.approx(expected)
+
+
+def three_duration(_, duration):  # Implementation of `EventWidthStrategy` for testing.
+    return 3 * duration
+
+
+@pytest.mark.parametrize(
+    "all_time,series,events,expected_time,expected_series",
+    [
+        (
+            [np.arange(20)],
+            [10 * np.arange(20)],
+            [PeriodicEvent(period=4, duration=1, epoch=3)],
+            [np.array([1, 5, 9, 13, 17])],
+            [np.array([10, 50, 90, 130, 170])],
+        ),
+        (
+            [np.arange(20)],
+            [10 * np.arange(20)],
+            [
+                PeriodicEvent(period=4, duration=1, epoch=3),
+                PeriodicEvent(period=7, duration=1, epoch=6),
+            ],
+            [np.array([1, 9, 17])],
+            [np.array([10, 90, 170])],
+        ),
+        (
+            [np.arange(10), np.arange(10, 20)],
+            [np.arange(0, 100, 10), np.arange(100, 200, 10)],
+            [
+                PeriodicEvent(period=4, duration=1, epoch=3),
+                PeriodicEvent(period=7, duration=1, epoch=6),
+            ],
+            [np.array([1, 9]), np.array([17])],
+            [np.array([10, 90]), np.array([170])],
+        ),
+    ],
+    ids=["one_segment_one_event", "one_segment_two_events", "two_segments_two_events"],
+)
+def test_remove_events__remove_events_correctly(
+    all_time,
+    series,
+    events,
+    expected_time,
+    expected_series,
+):
+    """Test check whether events are properly removed with only one time series feature."""
+    actual_time, actual_series = remove_events(all_time, events, series, three_duration)
+    assert_iterable_of_arrays_equal(actual_time, expected_time)
+    assert_iterable_of_arrays_equal(actual_series, expected_series)
+
+
+@pytest.mark.parametrize(
+    "include_empty,all_time,series,events,expected_time,expected_series",
+    [
+        (
+            True,
+            [np.arange(5), np.arange(10, 20)],
+            [np.arange(0, 50, 10), np.arange(100, 200, 10)],
+            [PeriodicEvent(period=10, duration=2, epoch=2.5)],
+            [np.array([]), np.array([16, 17, 18, 19])],
+            [np.array([]), np.array([160, 170, 180, 190])],
+        ),
+        (
+            False,
+            [np.arange(5), np.arange(10, 20)],
+            [np.arange(0, 50, 10), np.arange(100, 200, 10)],
+            [PeriodicEvent(period=10, duration=2, epoch=2.5)],
+            [np.array([16, 17, 18, 19])],
+            [np.array([160, 170, 180, 190])],
+        ),
+    ],
+    ids=["include_empty_segments", "exclude_empty_segments"],
+)
+def test_remove_events__handle_empty_segments(
+    include_empty,
+    all_time,
+    series,
+    events,
+    expected_time,
+    expected_series,
+):
+    """Test that empty segments are returned if `include_empty_segments=True`."""
+    result_time, result_series = remove_events(
+        all_time,
+        events,
+        series,
+        three_duration,
+        include_empty_segments=include_empty,
+    )
+    assert_iterable_of_arrays_equal(result_time, expected_time)
+    assert_iterable_of_arrays_equal(result_series, expected_series)
+
+
+@pytest.mark.parametrize(
+    "time, series, events",
+    [
+        ([np.arange(5)], [np.arange(5)], []),
+        ([np.arange(5), np.arange(5)], [np.arange(5)], [PeriodicEvent(1, 1, 1)]),
+        ([np.arange(10).reshape((2, 5))], [np.arange(5)], [PeriodicEvent(1, 1, 1)]),
+    ],
+    ids=["no_events_provided", "different_time_and_series_lenghts", "time_2D"],
+)
+def test_remove_events__invalid_inputs(time, series, events):
+    """Test that `ValueError` is raised when any of inputs is invalid."""
+    with pytest.raises(ValueError):
+        remove_events(time, events, series, three_duration)
