@@ -5,6 +5,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 from gaia.data.models import TCE, PeriodicEvent, TceLabel
 from gaia.data.preprocessing import (
     AdjustedPadding,
+    InvalidDimensionError,
     compute_euclidean_distance,
     compute_transits,
     normalize_median,
@@ -141,15 +142,18 @@ def test_phase_fold_time__return_correct_data(time_to_fold):
     assert_array_almost_equal(actual, expected)
 
 
-@pytest.mark.parametrize(
-    "time,period",
-    [(np.arange(10), -1), (np.arange(10).reshape((2, 5)), 1)],
-    ids=["good_time_bad_period", "good_period_bad_time"],
-)
-def test_phase_fold_time__invalid_parameters(time, period):
+@pytest.mark.parametrize("period", [-1, 0])
+def test_phase_fold_time__invalid_parameters(period):
     """Test that `ValueError` is raised when any of the parameters are invalid."""
     with pytest.raises(ValueError):
-        phase_fold_time(time, epoch=1, period=period)
+        phase_fold_time(np.array([1, 2]), epoch=1, period=period)
+
+
+def test_phase_fold_time__invalid_data_dimension():
+    """Test that `InvalidDimensionError` is raised when `time` dimension != 1."""
+    time = np.arange(10.0).reshape((2, 5))
+    with pytest.raises(InvalidDimensionError):
+        phase_fold_time(time, epoch=1, period=1)
 
 
 @pytest.mark.parametrize(
@@ -208,7 +212,7 @@ def test_split_arrays__invalid_time_or_series_dimensions(time, series):
     Test that `ValueError` is raised when any of individual `time` or `series` values has
     dimension != 1.
     """
-    with pytest.raises(ValueError, match="Expected all series in 'time' and 'series' be 1D"):
+    with pytest.raises(InvalidDimensionError):
         split_arrays(time, series)
 
 
@@ -235,9 +239,9 @@ def test_compute_euclidean_distance__return_correct_distance(X, Y, expected):
 
 
 def test_compute_euclidean_distance__invalid_data_dimension():
-    """Test that `ValueError` is raised when an input array of points has dimension != 2."""
+    """Test that `InvalidDimensionError` is raised when an array of points has dimension != 2."""
     points = np.array([1, 2, 3, 4, 5])
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidDimensionError):
         compute_euclidean_distance(points)
 
 
@@ -261,9 +265,9 @@ def test_normalize_median__return_correct_data(series, expected):
 
 
 def test_normalize_median__invalid_data_dimension():
-    """Test that `ValueError` is raised when an input array has dimension != 1."""
+    """Test that `InvalidDimensionError` is raised when an input array has dimension != 1."""
     points = np.array([1, 2, 3, 4, 5, 6]).reshape((2, 3))
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidDimensionError):
         normalize_median(points)
 
 
@@ -315,10 +319,10 @@ def test_compute_transits__compute_correctly(tce, time, expected):
 
 
 def test_compute_transits__invalid_time_dimension():
-    """Test that `ValueError` is raised when `time` has dimension != 1D."""
+    """Test that `InvalidDimensionError` is raised when `time` has dimension != 1D."""
     tce = TCE(id=1, target_id=1, name="tce", label=TceLabel.PC, event=PeriodicEvent(1, 1, 1))
     time = np.arange(10.0).reshape((2, 5))
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidDimensionError):
         compute_transits([tce], time)
 
 
@@ -431,15 +435,23 @@ def test_remove_events__handle_empty_segments(
 
 
 @pytest.mark.parametrize(
-    "time, series, events",
+    "time,series,events",
     [
         ([np.arange(5)], [np.arange(5)], []),
         ([np.arange(5), np.arange(5)], [np.arange(5)], [PeriodicEvent(1, 1, 1)]),
-        ([np.arange(10).reshape((2, 5))], [np.arange(5)], [PeriodicEvent(1, 1, 1)]),
     ],
-    ids=["no_events_provided", "different_time_and_series_lenghts", "time_2D"],
+    ids=["no_events_provided", "different_time_and_series_lenghts"],
 )
 def test_remove_events__invalid_inputs(time, series, events):
     """Test that `ValueError` is raised when any of inputs is invalid."""
     with pytest.raises(ValueError):
+        remove_events(time, events, series, three_duration)
+
+
+def test_remove_events__invalid_data_dimension():
+    """Test that `InvalidDimensionError` is raised when any of inputs is invalid."""
+    time = [np.arange(10.0).reshape((2, 5))]
+    series = [np.arange(5.0)]
+    events = [PeriodicEvent(1, 1, 1)]
+    with pytest.raises(InvalidDimensionError):
         remove_events(time, events, series, three_duration)

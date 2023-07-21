@@ -1,8 +1,21 @@
+from dataclasses import dataclass
 from typing import Iterable, Protocol, TypeAlias
 
 import numpy as np
 
 from gaia.data.models import TCE, AnySeries, PeriodicEvent, Series
+
+
+@dataclass
+class InvalidDimensionError(Exception):
+    """Raised when the tensor (mostly vectors or matrices) has invalid dimension(s)."""
+
+    required_dim: int
+    actual_dim: int
+    invalid_parameters_name: str | None = None
+
+    def __str__(self) -> str:
+        return f"Expected {self.invalid_parameters_name or 'data'} to be {self.required_dim}D, but got {self.actual_dim}D"  # noqa
 
 
 def compute_euclidean_distance(series: Series) -> Series:
@@ -14,14 +27,14 @@ def compute_euclidean_distance(series: Series) -> Series:
         series (Series): 2D array of float values
 
     Raises:
-        ValueError: `series` is not 2D
+        InvalidDimensionError: `series` is not 2D
 
     Returns:
         Series: 1D array of euclidean distance for each pair of points from `series`
     """
     ndim = series.ndim
     if ndim != 2:
-        raise ValueError(f"Expected 'series' to be 2D, but got {ndim}D")
+        raise InvalidDimensionError(required_dim=2, actual_dim=ndim)
 
     return np.linalg.norm(series, axis=0)  # type: ignore
 
@@ -33,14 +46,14 @@ def normalize_median(series: Series) -> Series:
         series (Series): 1D array of values
 
     Raises:
-        ValueError: `series` is not 1D
+        InvalidDimensionError: `series` is not 1D
 
     Returns:
         Series: Normalized values as: `series / median(series)`
     """
     ndim = series.ndim
     if ndim != 1:
-        raise ValueError(f"Expected 'series' to be 1D, but got {ndim}D")
+        raise InvalidDimensionError(required_dim=1, actual_dim=ndim)
 
     return series / np.nanmedian(series)
 
@@ -54,16 +67,17 @@ def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
         period (float): Period to fold over
 
     Raises:
-        ValueError: `period` <= 0 OR `time` is not 1D
+        ValueError: `period` <= 0
+        InvalidDimensionError: `time` is not 1D
 
     Returns:
         Series: 1D numpy array folded around a `period` with time values within
-            `[-period / 2, period / 2]`
+        `[-period / 2, period / 2]`
     """
     if period <= 0:
         raise ValueError(f"Expected 'period' > 0, but got {period=}")
     if time.ndim != 1:
-        raise ValueError(f"Expected 'time' to be 1D, but got {time.ndim}D")
+        raise InvalidDimensionError(required_dim=1, actual_dim=time.ndim)
 
     half_period = period / 2
     folded_time = np.mod(time + (half_period - epoch), period)
@@ -83,13 +97,16 @@ def compute_transits(
         time (Series): 1D array of time values
         default (str, optional): Text for non-transit points. Defaults to "not detected"
 
+    Raises:
+        InvalidDimensionError: `time` is not 1D
+
     Returns:
         AnySeries: A mask indicating for which time values TCE transit occurs. For transit
         points the name or ID of TCE will be included in the transit mask.
     """
     ndim = time.ndim
     if ndim != 1:
-        raise ValueError(f"Expected 'time' to be 1D, but got {ndim}D")
+        raise InvalidDimensionError(required_dim=1, actual_dim=ndim, invalid_parameters_name="time")
 
     transits_mask = [default] * len(time)
 
@@ -104,38 +121,54 @@ def compute_transits(
     return np.array(transits_mask)
 
 
-MultiSegmentSeries: TypeAlias = list[Series]
+IterableOfSeries: TypeAlias = Iterable[Series]
+ListOfSeries: TypeAlias = list[Series]
+
+
+def _check_series_dimension(
+    series: IterableOfSeries,
+    series_name: str | None = None,
+    required_dim: int = 1,
+) -> None:
+    for i, segment in enumerate(series):
+        if segment.ndim != required_dim:
+            name = f"{series_name or 'data'}[{i}]"
+            raise InvalidDimensionError(
+                required_dim=required_dim,
+                actual_dim=segment.ndim,
+                invalid_parameters_name=name,
+            )
 
 
 def split_arrays(
-    time: MultiSegmentSeries,
-    series: MultiSegmentSeries,
+    time: IterableOfSeries,
+    series: IterableOfSeries,
     gap_with: float = 0.75,
-) -> tuple[MultiSegmentSeries, MultiSegmentSeries]:
+) -> tuple[ListOfSeries, ListOfSeries]:
     """Split time series at gaps.
 
     Args:
-        time (MultiSegmentSeries): A list of 1D arrays of time values
-        series (MultiSegmentSeries): A list of 1D arrays of time series features corresponding
+        time (IterableOfSeries): An iterable of 1D arrays of time values
+        series (IterableOfSeries): An iterable of 1D arrays of time series features corresponding
         to the `time`
         gap_with (float, optional): Minimum time gap (in units of time) for split. Defaults to 0.75.
 
     Raises:
-        ValueError: `gap_width` <= 0 OR any of `time` or `series` values has dimension != 1
+        ValueError: `gap_width` <= 0 OR `time` and `series` lengths are different
+        InvalidDimensionError: Any of `time` or `series` values has dimension != 1
+
+        # TODO: test do tego ^^^
 
     Returns:
-        tuple[MultiSegmentSeries_, MultiSegmentSeries_]: Splitted time and series arrays
+        tuple[ListOfSeries, ListOfSeries]: Splitted time and series arrays
     """
     if gap_with <= 0:
         raise ValueError(f"Expected 'gap_width' > 0, but got {gap_with=}")
+    _check_series_dimension(time, "time")
+    _check_series_dimension(series, "series")
 
-    if any((t.ndim != 1 for t in time)) or any((s.ndim != 1 for s in series)):
-        raise ValueError(
-            "Expected all series in 'time' and 'series' be 1D, but at least one is not",
-        )
-
-    out_series: MultiSegmentSeries = []
-    out_time: MultiSegmentSeries = []
+    out_series: ListOfSeries = []
+    out_time: ListOfSeries = []
     split_indicies = [np.argwhere(np.diff(t) > gap_with).flatten() + 1 for t in time]
 
     for time_segment, series_segment, split_index in zip(time, series, split_indicies):
@@ -161,12 +194,12 @@ class AdjustedPadding:
 
 
 def remove_events(
-    time: MultiSegmentSeries,
+    time: IterableOfSeries,
     tce_events: Iterable[PeriodicEvent],
-    series: MultiSegmentSeries,
+    series: IterableOfSeries,
     event_width_calc: EventWidthStrategy,
     include_empty_segments: bool = True,
-) -> tuple[MultiSegmentSeries, MultiSegmentSeries]:
+) -> tuple[ListOfSeries, ListOfSeries]:
     """Remove transit events from a time series.
 
     Args:
@@ -187,13 +220,11 @@ def remove_events(
     """
     if not tce_events:
         raise ValueError("No tce events provided")
-    if any((t.ndim != 1 for t in time)) or any((s.ndim != 1 for s in series)):
-        raise ValueError(
-            "Expected all segments in 'time' and 'series' be 1D, but at least one is not",
-        )
+    _check_series_dimension(time, "time")
+    _check_series_dimension(series, "series")
 
-    out_time: MultiSegmentSeries = []
-    out_series: MultiSegmentSeries = []
+    out_time: ListOfSeries = []
+    out_series: ListOfSeries = []
 
     for time_segment, series_segment in zip(time, series, strict=True):
         transit_mask = np.ones_like(time_segment)
