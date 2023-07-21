@@ -8,12 +8,13 @@ from gaia.data.preprocessing import (
     InvalidDimensionError,
     compute_euclidean_distance,
     compute_transits,
+    interpolate_masked_spline,
     normalize_median,
     phase_fold_time,
     remove_events,
     split_arrays,
 )
-from tests.conftest import assert_iterable_of_arrays_equal
+from tests.conftest import assert_iterable_of_arrays_almost_equal, assert_iterable_of_arrays_equal
 
 
 @pytest.fixture(params=["simple", "large_epoch", "negative_epoch", "negative_time"])
@@ -455,3 +456,103 @@ def test_remove_events__invalid_data_dimension():
     events = [PeriodicEvent(1, 1, 1)]
     with pytest.raises(InvalidDimensionError):
         remove_events(time, events, series, three_duration)
+
+
+@pytest.mark.parametrize(
+    "time,masked_time,masked_splines",
+    [
+        (
+            [np.array([1, 2])],
+            [np.array([1, 2])],
+            [np.array([1, 2]), np.array([1, 2])],
+        ),
+        (
+            [np.array([1, 2])],
+            [np.array([1, 2]), np.array([1, 2])],
+            [np.array([1, 2])],
+        ),
+        (
+            [np.array([1, 2]), np.array([1, 2])],
+            [np.array([1, 2])],
+            [np.array([1, 2])],
+        ),
+    ],
+    ids=["invalid_masked_splines", "invalid_masked_time", "invalid_time"],
+)
+def test_interpolate_masked_spline__inputs_lenghts_mismatch(time, masked_time, masked_splines):
+    """Test that `ValueError` is raised when lengths of `time`, `masked_time` or `masked_splines`
+    are different.
+    """
+    with pytest.raises(ValueError):
+        interpolate_masked_spline(time, masked_time, masked_splines)
+
+
+@pytest.mark.parametrize(
+    "time,masked_time,masked_splines",
+    [
+        (
+            [np.array([1, 2])],
+            [np.array([1, 2])],
+            [np.array([1, 2]).reshape((2, 1))],
+        ),
+        (
+            [np.array([1, 2])],
+            [np.array([1, 2]).reshape((2, 1))],
+            [np.array([1, 2])],
+        ),
+        (
+            [np.array([1, 2]).reshape((2, 1))],
+            [np.array([1, 2])],
+            [np.array([1, 2])],
+        ),
+    ],
+    ids=["invalid_masked_splines", "invalid_masked_time", "invalid_time"],
+)
+def test_interpolate_masked_spline__invalid_data_dimension(time, masked_time, masked_splines):
+    """Test that `InvalidDimensionError` is raised when dimension of `time`, `masked_time` or
+    `masked_splines` != 1.
+    """
+    with pytest.raises(InvalidDimensionError):
+        interpolate_masked_spline(time, masked_time, masked_splines)
+
+
+@pytest.mark.parametrize(
+    "time,masked_time,masked_splines,expected",
+    [
+        ([], [], [], []),
+        (
+            [np.linspace(0, 1, 21)],
+            [np.linspace(0, 1, 20)],
+            [np.sin(np.linspace(0, 1, 20))],
+            [np.sin(np.linspace(0, 1, 21))],
+        ),
+        (
+            [np.linspace(0, 1, 21)],
+            [np.linspace(0, 1, 20)],
+            [2 * np.linspace(0, 1, 20)],
+            [2 * np.linspace(0, 1, 21)],
+        ),
+        (
+            [np.linspace(0, 1, 21), np.linspace(1, 2, 21)],
+            [np.linspace(0, 1, 20), np.linspace(1, 2, 20)],
+            [np.sin(np.linspace(0, 1, 20)), np.sin(np.linspace(1, 2, 20))],
+            [np.sin(np.linspace(0, 1, 21)), np.sin(np.linspace(1, 2, 21))],
+        ),
+        (
+            [np.linspace(0, 1, 21), np.linspace(1, 2, 21)],
+            [np.linspace(0, 1, 20), np.array([])],
+            [np.sin(np.linspace(0, 1, 20)), np.array([])],
+            [np.sin(np.linspace(0, 1, 21)), np.array([np.nan] * 21)],
+        ),
+    ],
+    ids=["all_inputs_empty", "sin", "linear", "2_segments_sin", "empty_segment"],
+)
+def test_interpolate_masked_spline__interpolate_correctly(
+    time,
+    masked_time,
+    masked_splines,
+    expected,
+):
+    """Test that masked spline is correctly linearly interpolate."""
+    actual = interpolate_masked_spline(time, masked_time, masked_splines)
+    assert_iterable_of_arrays_almost_equal(actual, expected, relative_tolerance=0.001)

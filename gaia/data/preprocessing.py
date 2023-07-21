@@ -240,3 +240,45 @@ def remove_events(
             out_series.append(series_segment[transit_mask])
 
     return out_time, out_series
+
+
+def interpolate_masked_spline(
+    time: IterableOfSeries,
+    masked_time: IterableOfSeries,
+    masked_splines: IterableOfSeries,
+) -> ListOfSeries:
+    """Linearly interpolate spline values across masked (missing) points.
+
+    If any of the `masked_time` segments are empty, they will be interpolated with `np.nan` values.
+
+    Args:
+        time (IterableOfSeries): A sequence of 1D arrays of time values at which to evaluate the
+        interpolated values
+        masked_time (IterableOfSeries): A sequence of 1D arrays of time values with some values
+        missing (masked)
+        masked_splines (IterableOfSeries): Masked spline values corresponding to `masked_time`
+
+    Raises:
+        ValueError: Lengths of `time`, `masked_time` and `masked_splines` are different
+        InvalidDimensionError: Any of `time`, `masked_time` or `masked_splines` values has
+        dimension != 1
+
+    Returns:
+        ListOfSeries: The list of masked splines (as 1D numpy arrays) with missing points linearly
+        interpolated.
+    """
+    _check_series_dimension(time, "time")
+    _check_series_dimension(masked_time, "masked_time")
+    _check_series_dimension(masked_splines, "masked_splines")
+
+    interpolations: ListOfSeries = []
+    segments = zip(time, masked_time, masked_splines, strict=True)
+
+    for time_segment, masked_time_segment, spline_segment in segments:
+        if masked_time_segment.any():
+            interpolation_segment = np.interp(time_segment, masked_time_segment, spline_segment)
+            interpolations.append(interpolation_segment)
+        else:
+            interpolations.append(np.array([np.nan] * len(time_segment)))
+
+    return interpolations
