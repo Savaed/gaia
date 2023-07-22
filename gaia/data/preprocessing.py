@@ -157,8 +157,6 @@ def split_arrays(
         ValueError: `gap_width` <= 0 OR `time` and `series` lengths are different
         InvalidDimensionError: Any of `time` or `series` values has dimension != 1
 
-        # TODO: test do tego ^^^
-
     Returns:
         tuple[ListOfSeries, ListOfSeries]: Splitted time and series arrays
     """
