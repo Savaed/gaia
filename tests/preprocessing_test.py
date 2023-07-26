@@ -6,6 +6,7 @@ from gaia.data.models import TCE, PeriodicEvent, TceLabel
 from gaia.data.preprocessing import (
     AdjustedPadding,
     InvalidDimensionError,
+    bin_aggregate,
     compute_euclidean_distance,
     compute_transits,
     interpolate_masked_spline,
@@ -556,3 +557,252 @@ def test_interpolate_masked_spline__interpolate_correctly(
     """Test that masked spline is correctly linearly interpolate."""
     actual = interpolate_masked_spline(time, masked_time, masked_splines)
     assert_iterable_of_arrays_almost_equal(actual, expected, relative_tolerance=0.001)
+
+
+@pytest.mark.parametrize(
+    "x,y,num_bins,bin_width,x_min,x_max",
+    [
+        (np.arange(10.0), np.arange(10.0), 1, 1, 0, 9),
+        (np.arange(10.0), np.arange(10.0), 2, 1, 9, 0),
+        (np.arange(10.0), np.arange(10.0), 2, 1, 11, None),
+        (np.arange(10.0), np.arange(10.0), 2, 11, 0, 9),
+        (np.arange(10.0), np.arange(10.0), 2, 0, 0, 9),
+        (np.array([1]), np.array([1]), 2, 11, 0, 9),
+        (np.arange(10.0)[::-1], np.arange(10.0), 2, 1, 0, 9),
+        (np.arange(10.0), np.arange(20.0), 2, 1, 0, 9),
+    ],
+    ids=[
+        "num_bins<2",
+        "x_min>x_max",
+        "x_min>x.max()",  # In current implementation this is the same case as `x_min>x_max`.
+        "bin_width_to_big",
+        "bin_width_equals_0",
+        "len(x)<2",
+        "x_not_sorted_asc",
+        "len(x)!=len(y)",
+    ],
+)
+def test_bin_aggregate__invalid_input(x, y, num_bins, bin_width, x_min, x_max):
+    """Test that `ValueError` is raised when any of inputs is invalid."""
+    with pytest.raises(ValueError):
+        bin_aggregate(x, y, num_bins=num_bins, bin_width=bin_width, x_min=x_min, x_max=x_max)
+
+
+@pytest.mark.parametrize(
+    "x,y",
+    [
+        (np.arange(10).reshape((2, 5)), np.arange(10)),
+        (np.arange(10), np.arange(10).reshape((2, 5))),
+    ],
+)
+def test_bin_aggregate__invalid_data_dimension(x, y):
+    """Test that `InvalidDimensionError` is raised when any of inputs is invalid."""
+    with pytest.raises(InvalidDimensionError):
+        bin_aggregate(x, y, num_bins=5)
+
+
+@pytest.mark.parametrize(
+    "x,y,num_bins,bin_width,expected_aggr,expected_bin_counts",
+    [
+        (
+            np.arange(0, 1.1, 0.1),
+            np.arange(0, 1.1, 0.1),
+            10,
+            None,
+            np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
+            np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
+        ),
+        (
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            10,
+            None,
+            np.array([0.05, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.45, 1.65, 1.85]),
+            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
+        ),
+        (
+            np.arange(0, 2, 0.1),
+            np.arange(0, 2, 0.1),
+            10,
+            None,
+            np.array([0.05, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.45, 1.65, 1.8]),
+            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 1]),
+        ),
+        (
+            np.arange(0, 1.1, 0.1),
+            np.arange(0, 1.1, 0.1),
+            4,
+            0.2,
+            np.array([0.05, 0.35, 0.65, 0.85]),
+            np.array([2, 2, 2, 2]),
+        ),
+        (
+            np.arange(0, 1.1, 0.1),
+            np.arange(0, 1.1, 0.1),
+            4,
+            0.3,
+            np.array([0.1, 0.4, 0.6, 0.8]),
+            np.array([3, 3, 3, 3]),
+        ),
+    ],
+    ids=[
+        "single_value_bins",
+        "multiple_values_bins",
+        "unequal_bins",
+        "bins_with_gaps",
+        "overlaying_bins",
+    ],
+)
+def test_bin_aggregate__aggregate_correctly(
+    x,
+    y,
+    num_bins,
+    bin_width,
+    expected_aggr,
+    expected_bin_counts,
+):
+    """Test that the data is binnarize and aggregate correctly."""
+    actual_result, actual_bin_counts = bin_aggregate(
+        x,
+        y,
+        num_bins=num_bins,
+        bin_width=bin_width,
+        aggr_func=np.median,
+    )
+    assert_array_almost_equal(actual_result, expected_aggr)
+    assert_array_equal(actual_bin_counts, expected_bin_counts)
+
+
+@pytest.mark.parametrize(
+    "x,y,num_bins,x_min,x_max,expected_aggr,expected_bin_counts",
+    [
+        (
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            5,
+            1,
+            None,
+            np.array([1.05, 1.25, 1.45, 1.65, 1.85]),
+            np.array([2, 2, 2, 2, 2]),
+        ),
+        (
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            5,
+            None,
+            1,
+            np.array([0.05, 0.25, 0.45, 0.65, 0.85]),
+            np.array([2, 2, 2, 2, 2]),
+        ),
+        (
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            5,
+            0.5,
+            1.5,
+            np.array([0.55, 0.75, 0.95, 1.15, 1.35]),
+            np.array([2, 2, 2, 2, 2]),
+        ),
+    ],
+    ids=["min", "max", "both"],
+)
+def test_bin_aggregate__respect_x_min_max_boundaries(
+    x,
+    y,
+    num_bins,
+    x_min,
+    x_max,
+    expected_aggr,
+    expected_bin_counts,
+):
+    """Test that the data is binnarize and aggregate correctly with min and max boundires set."""
+    actual_result, actual_bin_counts = bin_aggregate(
+        x,
+        y,
+        num_bins=num_bins,
+        aggr_func=np.median,
+        x_min=x_min,
+        x_max=x_max,
+    )
+    assert_array_almost_equal(actual_result, expected_aggr)
+    assert_array_equal(actual_bin_counts, expected_bin_counts)
+
+
+def test_bin_aggregate__default_value_for_empty_bins():
+    """Test that default value is used as aggregation for empty bins."""
+    x = np.arange(0, 1, 0.1)
+    y = np.arange(0, 1, 0.1)
+    num_bins = 4
+    default = 1.0
+    x_min = 0.6
+    expected_aggr = np.array([0.6, 0.7, 0.8, 1.0])
+    expected_bin_counts = np.array([1, 1, 1, 0])
+    actual_result, actual_bin_counts = bin_aggregate(
+        x,
+        y,
+        num_bins=num_bins,
+        x_min=x_min,
+        default=default,
+    )
+    assert_array_almost_equal(actual_result, expected_aggr)
+    assert_array_equal(actual_bin_counts, expected_bin_counts)
+
+
+@pytest.mark.parametrize(
+    "aggr_func,x,y,num_bins,expected_aggr,expected_bin_counts",
+    [
+        (
+            None,
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            10,
+            np.array([0.05, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.45, 1.65, 1.85]),
+            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
+        ),
+        (
+            np.max,
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            10,
+            np.array([0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9]),
+            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
+        ),
+        (
+            np.min,
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            10,
+            np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8]),
+            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
+        ),
+        (
+            np.mean,
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            2,
+            np.array([0.45, 1.45]),
+            np.array([10, 10]),
+        ),
+        (
+            lambda y: np.mean(y) ** 2,
+            np.arange(0, 2.1, 0.1),
+            np.arange(0, 2.1, 0.1),
+            2,
+            np.array([0.2025, 2.1025]),
+            np.array([10, 10]),
+        ),
+    ],
+    ids=["default_nanmedian", "max", "min", "mean", "custom"],
+)
+def test_bin_aggregate__different_aggregation_function(
+    aggr_func,
+    x,
+    y,
+    num_bins,
+    expected_aggr,
+    expected_bin_counts,
+):
+    """Test that various aggregate functions works propperly."""
+    actual_result, actual_bin_counts = bin_aggregate(x, y, num_bins=num_bins, aggr_func=aggr_func)
+    assert_array_almost_equal(actual_result, expected_aggr)
+    assert_array_equal(actual_bin_counts, expected_bin_counts)
