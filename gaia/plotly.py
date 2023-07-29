@@ -12,7 +12,7 @@ from gaia.data.models import PeriodicEvent, TceLabel
 
 class Margins(TypedDict):
     left: int
-    rigth: int
+    right: int
     top: int
     bottom: int
 
@@ -45,7 +45,7 @@ def plot_time_series(
         period_edges (Iterable[float] | None, optional): Endpoint of observation period.
         Defaults to None.
         margins: (Margins | None, optional): Margins for plot in `px` units.
-        If None then `Margins(left=0, rigth=0, bottom=0, top=30)` is used. Defaults to None
+        If None then `Margins(left=0, right=0, bottom=0, top=30)` is used. Defaults to None
         **kwargs (Any): Named parameters than should be passed to `px.scatter()` function
 
     Returns:
@@ -54,7 +54,7 @@ def plot_time_series(
     # Extend 'edges' to the series length as they are just a few values (one per observation period)
     values = list(zip_longest(*data.values()))
     df = pd.DataFrame(values, columns=data.keys())
-    margins = margins or Margins(left=0, rigth=0, bottom=0, top=30)
+    margins = margins or Margins(left=0, right=0, bottom=0, top=30)
 
     fig = px.scatter(df, x=x, y=y, hover_data=hover_data, color=color, title=title, **kwargs)
     fig.update_traces(marker={"opacity": 0.75, "size": 5})
@@ -74,7 +74,7 @@ def plot_time_series(
 
 def plot_empty_scatter(margins: Margins | None = None) -> go.Figure:
     fig = px.scatter()
-    margins = margins or Margins(left=0, rigth=0, bottom=0, top=30)
+    margins = margins or Margins(left=0, right=0, bottom=0, top=30)
     return fig.update_layout(margin=_to_plotly_margins(margins))
 
 
