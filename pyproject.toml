@@ -6,33 +6,29 @@ build-backend = "hatchling.build"
 name = "GAIA"
 version = "0.1.0"
 description = "Exoplanet classification system with an explainable ANN model"
-authors = [{ name = "Krzysztof Gonet", email = "36476874+Savaed@users.noreply.github.com" }]
+authors = [
+  { name = "Krzysztof Gonet", email = "36476874+Savaed@users.noreply.github.com" },
+]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "aiohttp",
-    "astropy",
-    "dash",
-    "duckdb",
-    "fakeredis",
-    "hydra-core",
-    "loguru",
-    "numpy",
-    "pandas",
-    "plotly",
-    "pydantic",
-    "rich",
-    "tensorflow",
+  "aiohttp",
+  "astropy",
+  "dash",
+  "duckdb",
+  "fakeredis",
+  "hydra-core",
+  "loguru",
+  "numpy",
+  "pandas",
+  "plotly",
+  "pydantic",
+  "rich",
+  "tensorflow",
 ]
 
 [project.optional-dependencies]
-dev = [
-  "covdefaults",
-  "coverage",
-  "pytest",
-  "pytest-asyncio",
-  "pytest-mock",
-]
+dev = ["covdefaults", "coverage", "pytest", "pytest-asyncio", "pytest-mock"]
 
 [tool.pytest.ini_options]
 pythonpath = "."
