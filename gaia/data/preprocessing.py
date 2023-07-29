@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from functools import partial
 from typing import Callable, Iterable, Protocol, TypeAlias
 
 import numpy as np
@@ -283,7 +282,8 @@ def interpolate_masked_spline(
     return interpolations
 
 
-def _validate_bin_aggregate_inputs(
+def _validate_create_bins_inputs(
+    *,
     x: Series,
     y: Series,
     num_bins: int,
@@ -317,32 +317,44 @@ def _validate_bin_aggregate_inputs(
         raise ValueError(
             f"Expected 'bin_width' be in the range (0, {max_bin_width}), but got {bin_width=}",
         )
-    partial(np.nanmedian, axis=0)
 
 
-def bin_aggregate(
+class BinAggregateFunction(Protocol):
+    def __call__(
+        self,
+        x: Series,
+        y: Series,
+        *,
+        num_bins: int,
+        default: float = 0.0,
+        bin_width: float | None = None,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        aggr_func: Callable[[Series], np.int_ | np.float_] | None = None,
+    ) -> tuple[Series, IntSeries]:
+        ...
+
+
+def create_bins(
     x: Series,
     y: Series,
     *,
     num_bins: int,
-    default: float = 0.0,
     bin_width: float | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
-    aggr_func: Callable[[Series], np.int_ | np.float_] | None = None,
-) -> tuple[Series, IntSeries]:
-    """Aggregate y-values in uniform intervals (bins) along the x-axis.
+) -> tuple[Series]:
+    """Assign the y-values to the uniform intervals (bins) created along the x-axis.
 
     The interval `[x_min, x_max)` is divided into `num_bins` uniformly spaced intervals of width
-    `bin_width`. The value computed for each bin is the aggregation of all y-values whose
-    corresponding x-value is in the interval.
+    `bin_width` and y-values corresponding with each interval are assigned to those bins. Any empty
+    bins will be returned as an empty 1D numpy array.
 
     Args:
-        x (Series): 1D numpy array of x-coordinates sorted in ascending order. Must have at least 2
+        x (Series): 1D numpy array of x-values sorted in ascending order. Must have at least 2
             elements, and all elements cannot be the same value
         y (Series): 1D numpy array with the same length as `x`
         num_bins (int): The number of intervals to divide the x-axis into. Must be at least 2
-        default (float, optional): Default value to use for empty bins. Defaults to 0.0.
         bin_width (float | None, optional): The width of each bin on the x-axis. Must be positive
             and less than x_max - x_min. If `None` passed it is computed as `(x_max - x_min) /
             num_bins` to cover all x-values. Defaults to None.
@@ -352,9 +364,6 @@ def bin_aggregate(
         x_max (float | None, optional): The exclusive rightmost value to consider on the x-axis.
             Must be greater than `x_min`. If `None` passed it is computed as `max(x)`. Defaults
             to None.
-        aggr_func (Callable[[Series], np.float_ | np.int_] | None, optional): A function that will
-            be called to aggregate values within each bin. If None it will be `np.nanmedian`.
-            Defaults to None.
 
     Note:
         The bins dividing is unstable due to the precision of floating-point numbers and may lead to
@@ -375,9 +384,7 @@ def bin_aggregate(
         InvalidDimensionError: `x` or `y` has dimension != 1
 
     Returns:
-        tuple[Series, IntSeries]: 1D numpy array of length `num_bins` containing the aggregated
-            y-values of uniformly spaced bins on the x-axis and 1D numpy array of length `num_bins`
-            indicating the number of y-values in each bin.
+        tuple[Series]: A tuple of 1D numpy arrays containing the y-values of evenly spaced bins
     """
     if x.ndim != 1:
         raise InvalidDimensionError(required_dim=1, actual_dim=x.ndim, invalid_parameters_name="x")
@@ -391,13 +398,11 @@ def bin_aggregate(
         x_max = x.max()
 
     if bin_width is None:
-        # By default `bin width` will be large enough to cover all x values with respect to
+        # By default `bin width` will be large enough to cover all x-values with respect to
         # `num_bins` without any bins gap or overlapping.
         bin_width = abs(x_max - x_min) / num_bins
 
-    aggregation_func = aggr_func or partial(np.nanmedian, axis=0)
-
-    _validate_bin_aggregate_inputs(
+    _validate_create_bins_inputs(
         x=x,
         y=y,
         num_bins=num_bins,
@@ -406,18 +411,17 @@ def bin_aggregate(
         x_max=x_max,
     )
 
-    # If `bin_width` is close to `x_max - x_min`, then `bin_spacing`
-    # is very small, leading toslower operation.
+    # If `bin_width` is close to `abs(x_max - x_min)`, then `bin_spacing`
+    # is very small, leading to slower operation.
     bin_spacing = (x_max - x_min - bin_width) / (num_bins - 1)
     left_bin_edges = np.arange(x_min, x_max, bin_spacing)
-    rigth_bin_edges = np.arange(x_min + bin_width, x_max + 10e-06, bin_spacing)
-    bin_edges = zip(left_bin_edges, rigth_bin_edges)
+    right_bin_edges = np.arange(x_min + bin_width, x_max + 10e-06, bin_spacing)
+    bin_edges = zip(left_bin_edges, right_bin_edges)
 
     # NOTE: This mask is unstable due to the precision of floating-point numbers and may lead to
     # different results when using x_min, x_max e.g.:
     #   x=0.6-1.6, (value range x=1.0), num_bins=5 -> count_bins=[2,2,2,2,1])
     #   x=0.5-1.5, (value range x=1.0), num_bins=5 -> count_bins=[2,2,2,2,2])
-    bins_masks = [np.logical_and(x >= left, x < rigth) for left, rigth in bin_edges]
-    results = np.array([aggregation_func(y[m]) if m.any() else default for m in bins_masks])
-    bin_counts = np.count_nonzero(bins_masks, axis=1)
-    return results, bin_counts
+    bins_masks = [np.logical_and(x >= left, x < right) for left, right in bin_edges]
+    bins_y = tuple([y[mask] if mask.any() else np.array([]) for mask in bins_masks])
+    return bins_y  # type: ignore

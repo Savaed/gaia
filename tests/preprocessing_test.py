@@ -6,9 +6,9 @@ from gaia.data.models import TCE, PeriodicEvent, TceLabel
 from gaia.data.preprocessing import (
     AdjustedPadding,
     InvalidDimensionError,
-    bin_aggregate,
     compute_euclidean_distance,
     compute_transits,
+    create_bins,
     interpolate_masked_spline,
     normalize_median,
     phase_fold_time,
@@ -582,10 +582,10 @@ def test_interpolate_masked_spline__interpolate_correctly(
         "len(x)!=len(y)",
     ],
 )
-def test_bin_aggregate__invalid_input(x, y, num_bins, bin_width, x_min, x_max):
+def test_create_bins__invalid_input(x, y, num_bins, bin_width, x_min, x_max):
     """Test that `ValueError` is raised when any of inputs is invalid."""
     with pytest.raises(ValueError):
-        bin_aggregate(x, y, num_bins=num_bins, bin_width=bin_width, x_min=x_min, x_max=x_max)
+        create_bins(x, y, num_bins=num_bins, bin_width=bin_width, x_min=x_min, x_max=x_max)
 
 
 @pytest.mark.parametrize(
@@ -595,54 +595,104 @@ def test_bin_aggregate__invalid_input(x, y, num_bins, bin_width, x_min, x_max):
         (np.arange(10), np.arange(10).reshape((2, 5))),
     ],
 )
-def test_bin_aggregate__invalid_data_dimension(x, y):
-    """Test that `InvalidDimensionError` is raised when any of inputs is invalid."""
+def test_create_bins__invalid_data_dimension(x, y):
+    """Test that `InvalidDimensionError` is raised when `x` or `y` values has invalid dimension."""
     with pytest.raises(InvalidDimensionError):
-        bin_aggregate(x, y, num_bins=5)
+        create_bins(x, y, num_bins=5)
 
 
 @pytest.mark.parametrize(
-    "x,y,num_bins,bin_width,expected_aggr,expected_bin_counts",
+    "x,y,num_bins,bin_width,expected_bins",
     [
         (
             np.arange(0, 1.1, 0.1),
             np.arange(0, 1.1, 0.1),
             10,
             None,
-            np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
-            np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
+            (
+                np.array([0]),
+                np.array([0.1]),
+                np.array([0.2]),
+                np.array([0.3]),
+                np.array([0.4]),
+                np.array([0.5]),
+                np.array([0.6]),
+                np.array([0.7]),
+                np.array([0.8]),
+                np.array([0.9]),
+            ),
         ),
         (
             np.arange(0, 2.1, 0.1),
             np.arange(0, 2.1, 0.1),
             10,
             None,
-            np.array([0.05, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.45, 1.65, 1.85]),
-            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
+            (
+                np.array([0, 0.1]),
+                np.array([0.2, 0.3]),
+                np.array([0.4, 0.5]),
+                np.array([0.6, 0.7]),
+                np.array([0.8, 0.9]),
+                np.array([1.0, 1.1]),
+                np.array([1.2, 1.3]),
+                np.array([1.4, 1.5]),
+                np.array([1.6, 1.7]),
+                np.array([1.8, 1.9]),
+            ),
         ),
         (
             np.arange(0, 2, 0.1),
             np.arange(0, 2, 0.1),
             10,
             None,
-            np.array([0.05, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.45, 1.65, 1.8]),
-            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 1]),
+            (
+                np.array([0, 0.1]),
+                np.array([0.2, 0.3]),
+                np.array([0.4, 0.5]),
+                np.array([0.6, 0.7]),
+                np.array([0.8, 0.9]),
+                np.array([1.0, 1.1]),
+                np.array([1.2, 1.3]),
+                np.array([1.4, 1.5]),
+                np.array([1.6, 1.7]),
+                np.array([1.8]),
+            ),
         ),
         (
             np.arange(0, 1.1, 0.1),
             np.arange(0, 1.1, 0.1),
             4,
             0.2,
-            np.array([0.05, 0.35, 0.65, 0.85]),
-            np.array([2, 2, 2, 2]),
+            (
+                np.array([0, 0.1]),
+                np.array([0.3, 0.4]),
+                np.array([0.6, 0.7]),
+                np.array([0.8, 0.9]),
+            ),
         ),
         (
             np.arange(0, 1.1, 0.1),
             np.arange(0, 1.1, 0.1),
             4,
             0.3,
-            np.array([0.1, 0.4, 0.6, 0.8]),
-            np.array([3, 3, 3, 3]),
+            (
+                np.array([0, 0.1, 0.2]),
+                np.array([0.3, 0.4, 0.5]),
+                np.array([0.5, 0.6, 0.7]),
+                np.array([0.7, 0.8, 0.9]),
+            ),
+        ),
+        (
+            np.arange(0.6, 1, 0.1),
+            np.arange(0.6, 1, 0.1),
+            4,
+            None,
+            (
+                np.array([0.6]),
+                np.array([0.7]),
+                np.array([0.8]),
+                np.array([]),
+            ),
         ),
     ],
     ids=[
@@ -651,30 +701,17 @@ def test_bin_aggregate__invalid_data_dimension(x, y):
         "unequal_bins",
         "bins_with_gaps",
         "overlaying_bins",
+        "empty_bin",
     ],
 )
-def test_bin_aggregate__aggregate_correctly(
-    x,
-    y,
-    num_bins,
-    bin_width,
-    expected_aggr,
-    expected_bin_counts,
-):
-    """Test that the data is binnarize and aggregate correctly."""
-    actual_result, actual_bin_counts = bin_aggregate(
-        x,
-        y,
-        num_bins=num_bins,
-        bin_width=bin_width,
-        aggr_func=np.median,
-    )
-    assert_array_almost_equal(actual_result, expected_aggr)
-    assert_array_equal(actual_bin_counts, expected_bin_counts)
+def test_create_bins__aggregate_correctly(x, y, num_bins, bin_width, expected_bins):
+    """Test that the data is correctly divided into bins."""
+    actual_result = create_bins(x, y, num_bins=num_bins, bin_width=bin_width)
+    assert_iterable_of_arrays_almost_equal(actual_result, expected_bins)
 
 
 @pytest.mark.parametrize(
-    "x,y,num_bins,x_min,x_max,expected_aggr,expected_bin_counts",
+    "x,y,num_bins,x_min,x_max,expected_bins",
     [
         (
             np.arange(0, 2.1, 0.1),
@@ -682,8 +719,13 @@ def test_bin_aggregate__aggregate_correctly(
             5,
             1,
             None,
-            np.array([1.05, 1.25, 1.45, 1.65, 1.85]),
-            np.array([2, 2, 2, 2, 2]),
+            (
+                np.array([1.0, 1.1]),
+                np.array([1.2, 1.3]),
+                np.array([1.4, 1.5]),
+                np.array([1.6, 1.7]),
+                np.array([1.8, 1.9]),
+            ),
         ),
         (
             np.arange(0, 2.1, 0.1),
@@ -691,8 +733,13 @@ def test_bin_aggregate__aggregate_correctly(
             5,
             None,
             1,
-            np.array([0.05, 0.25, 0.45, 0.65, 0.85]),
-            np.array([2, 2, 2, 2, 2]),
+            (
+                np.array([0.0, 0.1]),
+                np.array([0.2, 0.3]),
+                np.array([0.4, 0.5]),
+                np.array([0.6, 0.7]),
+                np.array([0.8, 0.9]),
+            ),
         ),
         (
             np.arange(0, 2.1, 0.1),
@@ -700,109 +747,18 @@ def test_bin_aggregate__aggregate_correctly(
             5,
             0.5,
             1.5,
-            np.array([0.55, 0.75, 0.95, 1.15, 1.35]),
-            np.array([2, 2, 2, 2, 2]),
+            (
+                np.array([0.5, 0.6]),
+                np.array([0.7, 0.8]),
+                np.array([0.9, 1.0]),
+                np.array([1.1, 1.2]),
+                np.array([1.3, 1.4]),
+            ),
         ),
     ],
     ids=["min", "max", "both"],
 )
-def test_bin_aggregate__respect_x_min_max_boundaries(
-    x,
-    y,
-    num_bins,
-    x_min,
-    x_max,
-    expected_aggr,
-    expected_bin_counts,
-):
-    """Test that the data is binnarize and aggregate correctly with min and max boundires set."""
-    actual_result, actual_bin_counts = bin_aggregate(
-        x,
-        y,
-        num_bins=num_bins,
-        aggr_func=np.median,
-        x_min=x_min,
-        x_max=x_max,
-    )
-    assert_array_almost_equal(actual_result, expected_aggr)
-    assert_array_equal(actual_bin_counts, expected_bin_counts)
-
-
-def test_bin_aggregate__default_value_for_empty_bins():
-    """Test that default value is used as aggregation for empty bins."""
-    x = np.arange(0, 1, 0.1)
-    y = np.arange(0, 1, 0.1)
-    num_bins = 4
-    default = 1.0
-    x_min = 0.6
-    expected_aggr = np.array([0.6, 0.7, 0.8, 1.0])
-    expected_bin_counts = np.array([1, 1, 1, 0])
-    actual_result, actual_bin_counts = bin_aggregate(
-        x,
-        y,
-        num_bins=num_bins,
-        x_min=x_min,
-        default=default,
-    )
-    assert_array_almost_equal(actual_result, expected_aggr)
-    assert_array_equal(actual_bin_counts, expected_bin_counts)
-
-
-@pytest.mark.parametrize(
-    "aggr_func,x,y,num_bins,expected_aggr,expected_bin_counts",
-    [
-        (
-            None,
-            np.arange(0, 2.1, 0.1),
-            np.arange(0, 2.1, 0.1),
-            10,
-            np.array([0.05, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.45, 1.65, 1.85]),
-            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
-        ),
-        (
-            np.max,
-            np.arange(0, 2.1, 0.1),
-            np.arange(0, 2.1, 0.1),
-            10,
-            np.array([0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9]),
-            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
-        ),
-        (
-            np.min,
-            np.arange(0, 2.1, 0.1),
-            np.arange(0, 2.1, 0.1),
-            10,
-            np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8]),
-            np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
-        ),
-        (
-            np.mean,
-            np.arange(0, 2.1, 0.1),
-            np.arange(0, 2.1, 0.1),
-            2,
-            np.array([0.45, 1.45]),
-            np.array([10, 10]),
-        ),
-        (
-            lambda y: np.mean(y) ** 2,
-            np.arange(0, 2.1, 0.1),
-            np.arange(0, 2.1, 0.1),
-            2,
-            np.array([0.2025, 2.1025]),
-            np.array([10, 10]),
-        ),
-    ],
-    ids=["default_nanmedian", "max", "min", "mean", "custom"],
-)
-def test_bin_aggregate__different_aggregation_function(
-    aggr_func,
-    x,
-    y,
-    num_bins,
-    expected_aggr,
-    expected_bin_counts,
-):
-    """Test that various aggregate functions works propperly."""
-    actual_result, actual_bin_counts = bin_aggregate(x, y, num_bins=num_bins, aggr_func=aggr_func)
-    assert_array_almost_equal(actual_result, expected_aggr)
-    assert_array_equal(actual_bin_counts, expected_bin_counts)
+def test_create_bins__respect_x_min_max_boundaries(x, y, num_bins, x_min, x_max, expected_bins):
+    """Test that the data is correctly divided into bins with min and max boundaries set."""
+    actual_result = create_bins(x, y, num_bins=num_bins, x_min=x_min, x_max=x_max)
+    assert_iterable_of_arrays_almost_equal(actual_result, expected_bins)
