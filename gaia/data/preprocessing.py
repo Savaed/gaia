@@ -490,3 +490,77 @@ def compute_global_view_time_boundaries(period: float, duration: float) -> Bound
     if period < 0:
         raise ValueError(f"Expected 'period' >= 0, but got {period=}")
     return -period / 2, period / 2
+
+
+class BinWidthFunction(Protocol):
+    def __call__(self, period: float, duration: float) -> float:
+        ...
+
+
+def compute_local_view_bin_width(
+    period: float,
+    duration: float,
+    bin_width_factor: float = 0.16,
+) -> float:
+    """Compute a bin width for a local time series view as specified in the `ExoMiner` paper.
+
+    Bin width is computed as `duration * bin_width_factor`.
+
+    Args:
+        period (float): Unused. Only for `BinWidthFunction` compatibility
+        duration (float): TCE transit duration
+        bin_width_factor (float, optional): Bin width factor. Larger factor results with larger
+            bins. Defaults to 0.16.
+
+    Note:
+        For details see the original paper: https://arxiv.org/pdf/2111.10009.pdf
+
+    Raises:
+        ValueError: `duration` or `bin_width_factor` < 0
+
+    Returns:
+        float: Bin width for a local view
+    """
+    if duration < 0:
+        raise ValueError(f"Expected 'duration' >= 0, but got {duration=}")
+    if bin_width_factor < 0:
+        raise ValueError(f"Expected 'bin_width_factor' >= 0, but got {bin_width_factor=}")
+    return duration * bin_width_factor
+
+
+def compute_global_view_bin_width(
+    period: float,
+    duration: float,
+    num_bins: int = 301,
+    bin_width_factor: float = 0.16,
+) -> float:
+    """Compute a bin width for a global time series view as specified in the `ExoMiner` paper.
+
+    Bin width is computed as `max(period / num_bins, bin_width_factor * duration)`.
+
+    Args:
+        period (float): TCE period
+        duration (float): TCE transit duration
+        num_bins (int, optional): Number of bins to include in a view. Defaults to 301
+        bin_width_factor (float, optional): Bin width factor. Larger factor results in larger
+            bins. Defaults to 0.16.
+
+    Note:
+        For details see the original paper: https://arxiv.org/pdf/2111.10009.pdf
+
+    Raises:
+        ValueError: `period`/`duration`/`bin_width_factor` < 0 OR `num_bins` < 2
+
+    Returns:
+        float: Bin width for a global view
+    """
+    if period < 0:
+        raise ValueError(f"Expected 'period' >= 0, but got {period=}")
+    if duration < 0:
+        raise ValueError(f"Expected 'duration' >= 0, but got {duration=}")
+    if bin_width_factor < 0:
+        raise ValueError(f"Expected 'bin_width_factor' >= 0, but got {bin_width_factor=}")
+    if num_bins < 2:
+        raise ValueError(f"Expected 'num_bins' >= 2, but got {num_bins=}")
+
+    return max(period / num_bins, bin_width_factor * duration)

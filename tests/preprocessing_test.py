@@ -7,7 +7,9 @@ from gaia.data.preprocessing import (
     AdjustedPadding,
     InvalidDimensionError,
     compute_euclidean_distance,
+    compute_global_view_bin_width,
     compute_global_view_time_boundaries,
+    compute_local_view_bin_width,
     compute_local_view_time_boundaries,
     compute_transits,
     create_bins,
@@ -813,3 +815,59 @@ def test_compute_global_view_time_boundaries__compute_correct_boudaries():
     expected = (-1.1, 1.1)
     actual = compute_global_view_time_boundaries(period, 0)
     assert actual == expected
+
+
+@pytest.mark.parametrize("duration,bin_width_factor", [(-1, 2), (2, -1)])
+def test_compute_local_view_bin_width__invalid_inputs(duration, bin_width_factor):
+    """Test that `ValueError` is raised when any of the inputs is invalid."""
+    with pytest.raises(ValueError):
+        compute_local_view_bin_width(0, duration, bin_width_factor)
+
+
+def test_compute_local_view_bin_width__compute_correct_width():
+    """Test that correct bin width is computed."""
+    duration = 2.2
+    bin_width_factor = 0.16
+    expected = 0.352
+    actual = compute_local_view_bin_width(0, duration, bin_width_factor)
+    assert actual == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "period,duration,bin_width_factor,num_bins",
+    [
+        (-1, 1, 0.16, 3),
+        (1, -1, 0.16, 3),
+        (1, 1, -0.16, 3),
+        (1, 1, 0.16, 1),
+    ],
+)
+def test_compute_global_view_bin_width__invalid_inputs(
+    period,
+    duration,
+    bin_width_factor,
+    num_bins,
+):
+    """Test that `ValueError` is raised when any of the inputs is invalid."""
+    with pytest.raises(ValueError):
+        compute_global_view_bin_width(period, duration, num_bins, bin_width_factor)
+
+
+@pytest.mark.parametrize(
+    "period,duration,bin_width_factor,num_bins,expected",
+    [
+        (3, 1, 0.16, 2, 1.5),
+        (2, 2, 1.16, 2, 2.32),
+        (1.4, 2, 0.35, 2, 0.7),
+    ],
+)
+def test_compute_global_view_bin_width__compute_correct_width(
+    period,
+    duration,
+    bin_width_factor,
+    num_bins,
+    expected,
+):
+    """Test that correct bin width is computed."""
+    actual = compute_global_view_bin_width(period, duration, num_bins, bin_width_factor)
+    assert actual == pytest.approx(expected)
