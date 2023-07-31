@@ -7,6 +7,8 @@ from gaia.data.preprocessing import (
     AdjustedPadding,
     InvalidDimensionError,
     compute_euclidean_distance,
+    compute_global_view_time_boundaries,
+    compute_local_view_time_boundaries,
     compute_transits,
     create_bins,
     interpolate_masked_spline,
@@ -762,3 +764,52 @@ def test_create_bins__respect_x_min_max_boundaries(x, y, num_bins, x_min, x_max,
     """Test that the data is correctly divided into bins with min and max boundaries set."""
     actual_result = create_bins(x, y, num_bins=num_bins, x_min=x_min, x_max=x_max)
     assert_iterable_of_arrays_almost_equal(actual_result, expected_bins)
+
+
+@pytest.mark.parametrize(
+    "period,duration,num_durations",
+    [
+        (-1, 2, 2.5),
+        (1, -2, 2.5),
+        (1, 2, -2.5),
+    ],
+)
+def test_compute_local_view_time_boundaries__invalid_inputs(period, duration, num_durations):
+    """Test that `ValueError` is raised when any of the inputs is invalid."""
+    with pytest.raises(ValueError):
+        compute_local_view_time_boundaries(period, duration, num_durations)
+
+
+@pytest.mark.parametrize(
+    "period,duration,num_durations,expected",
+    [
+        (2, 1, 3, (-1, 1)),
+        (4, 1, 1, (-1, 1)),
+        (2, 1, 1, (-1, 1)),
+        (1.99, 0.99, 1, (-0.99, 0.99)),
+    ],
+)
+def test_compute_local_view_time_boundaries__compute_correct_boudaries(
+    period,
+    duration,
+    num_durations,
+    expected,
+):
+    """Test that correct time min, max boundaries are computed."""
+    actual = compute_local_view_time_boundaries(period, duration, num_durations)
+    assert actual == expected
+
+
+def test_compute_global_view_time_boundaries__invalid_inputs():
+    """Test that `ValueError` is raised when any of the inputs is invalid."""
+    period = -1
+    with pytest.raises(ValueError):
+        compute_global_view_time_boundaries(period, 0)
+
+
+def test_compute_global_view_time_boundaries__compute_correct_boudaries():
+    """Test that correct time min, max boundaries are computed."""
+    period = 2.2
+    expected = (-1.1, 1.1)
+    actual = compute_global_view_time_boundaries(period, 0)
+    assert actual == expected

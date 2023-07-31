@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable, Iterable, Protocol, TypeAlias
+from typing import Iterable, Protocol, TypeAlias
 
 import numpy as np
 
-from gaia.data.models import TCE, AnySeries, IntSeries, PeriodicEvent, Series
+from gaia.data.models import TCE, AnySeries, PeriodicEvent, Series
 
 
 @dataclass
@@ -326,12 +326,10 @@ class BinAggregateFunction(Protocol):
         y: Series,
         *,
         num_bins: int,
-        default: float = 0.0,
         bin_width: float | None = None,
         x_min: float | None = None,
         x_max: float | None = None,
-        aggr_func: Callable[[Series], np.int_ | np.float_] | None = None,
-    ) -> tuple[Series, IntSeries]:
+    ) -> tuple[Series]:
         ...
 
 
@@ -425,3 +423,70 @@ def create_bins(
     bins_masks = [np.logical_and(x >= left, x < right) for left, right in bin_edges]
     bins_y = tuple([y[mask] if mask.any() else np.array([]) for mask in bins_masks])
     return bins_y  # type: ignore
+
+
+Boundaries: TypeAlias = tuple[float, float]
+
+
+class TimeBoundariesFunction(Protocol):
+    def __call__(self, period: float, duration: float) -> Boundaries:
+        ...
+
+
+def compute_local_view_time_boundaries(
+    period: float,
+    duration: float,
+    num_durations: float = 2.5,
+) -> Boundaries:
+    """Compute a time range for a local time series view as specified in the `ExoMiner` paper.
+
+    Time min is computed as `max(-period / 2, -duration * num_durations)`.
+    Time max is computed as `max(period / 2, duration * num_durations)`.
+
+    Args:
+        period (float): TCE period
+        duration (float): TCE transit duration
+        num_durations (float, optional): Number of event transit durations to consider in
+            calculation. Defaults to 2.5
+
+    Note:
+        For details see the original paper: https://arxiv.org/pdf/2111.10009.pdf
+
+    Raises:
+        ValueError: `period`/`duration`/`num_durations` < 0
+
+    Returns:
+        Boundaries: Minimum and maximum time for a local view
+    """
+    if period < 0:
+        raise ValueError(f"Expected 'period' >= 0, but got {period=}")
+    if duration < 0:
+        raise ValueError(f"Expected 'duration' >= 0, but got {duration=}")
+    if num_durations < 0:
+        raise ValueError(f"Expected 'num_durations' >= 0, but got {num_durations=}")
+    time_min = max(-period / 2, -duration * num_durations)
+    time_max = min(period / 2, duration * num_durations)
+    return time_min, time_max
+
+
+def compute_global_view_time_boundaries(period: float, duration: float) -> Boundaries:
+    """Compute a time range for a global time series view as specified in the `ExoMiner` paper.
+
+    Time min is computed as `-period / 2`. Time max is computed as `period / 2`.
+
+    Args:
+        period (float): TCE period
+        duration (float): Unused. Only for `TimeBoundariesFunction` compatibility
+
+    Note:
+        For details see the original paper: https://arxiv.org/pdf/2111.10009.pdf
+
+    Raises:
+        ValueError: `period` < 0
+
+    Returns:
+        Boundaries: Minimum and maximum time for a global view
+    """
+    if period < 0:
+        raise ValueError(f"Expected 'period' >= 0, but got {period=}")
+    return -period / 2, period / 2
