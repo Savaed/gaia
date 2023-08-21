@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterable, Protocol, TypeAlias
+from typing import Callable, Iterable, Protocol, TypeAlias
 
 import numpy as np
 
@@ -319,7 +319,7 @@ def _validate_create_bins_inputs(
         )
 
 
-class BinAggregateFunction(Protocol):
+class BinFunction(Protocol):
     def __call__(
         self,
         x: Series,
@@ -564,3 +564,59 @@ def compute_global_view_bin_width(
         raise ValueError(f"Expected 'num_bins' >= 2, but got {num_bins=}")
 
     return max(period / num_bins, bin_width_factor * duration)
+
+
+AggregateFunction: TypeAlias = Callable[[Series], float]
+
+
+class ViewGenerator:
+    """Time series view generator."""
+
+    def __init__(
+        self,
+        folded_time: Series,
+        series: Series,
+        bin_func: BinFunction,
+        aggregate_func: AggregateFunction,
+        default: float | AggregateFunction = 0.0,
+    ) -> None:
+        self._folded_time = folded_time
+        self._series = series
+        self._bin_func = bin_func
+        self._aggregate_func = aggregate_func
+        self._empty_bin_handler = default if callable(default) else lambda _: default  # type: ignore # noqa
+
+    def generate(self, num_bins: int, time_min_max: Boundaries, bin_width: float) -> Series:
+        """Generate a time series view by binning and aggregating y-values.
+
+        Args:
+            num_bins (int): The number of bins to divide the time series into. Must be at least 2
+            time_min_max (Boundaries): `[min_time, max_time)` to consider on the folded time axis
+            bin_width (float): The width of each bin on the folded time axis. Must be greater than 0
+
+        Raises:
+            ValueError: `num_bins` < 2 OR `bin_width` <= 0
+
+        Returns:
+            Series: Time series view with a length equal to the `num_bins`, created by binning and
+                aggregating the y-values.
+        """
+        if num_bins < 2:
+            raise ValueError(f"Expected 'num_bins' be at least 2, but got {num_bins}")
+        if bin_width <= 0:
+            raise ValueError(f"Expected 'bin_width' to be a positive float, but got {bin_width}")
+
+        time_min, time_max = time_min_max
+        bins = self._bin_func(
+            self._folded_time,
+            self._series,
+            num_bins=num_bins,
+            bin_width=bin_width,
+            x_min=time_min,
+            x_max=time_max,
+        )
+        view = [
+            self._aggregate_func(bin) if bin.any() else self._empty_bin_handler(self._series)
+            for bin in bins
+        ]
+        return np.array(view)

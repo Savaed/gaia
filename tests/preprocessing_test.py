@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
@@ -5,7 +7,9 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 from gaia.data.models import TCE, PeriodicEvent, TceLabel
 from gaia.data.preprocessing import (
     AdjustedPadding,
+    BinFunction,
     InvalidDimensionError,
+    ViewGenerator,
     compute_euclidean_distance,
     compute_global_view_bin_width,
     compute_global_view_time_boundaries,
@@ -871,3 +875,72 @@ def test_compute_global_view_bin_width__compute_correct_width(
     """Test that correct bin width is computed."""
     actual = compute_global_view_bin_width(period, duration, num_bins, bin_width_factor)
     assert actual == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("num_bins,bin_width", [(1, 1.2), (10, -0.1)])
+def test_view_generator_generate__invalid_inputs(num_bins, bin_width):
+    """Test that `ValueError` is raised when any input in invalid."""
+    generator = ViewGenerator(np.array([0, 1]), np.array([0, 1]), Mock(spec=BinFunction), np.median)
+    with pytest.raises(ValueError):
+        generator.generate(num_bins, (0, 1), bin_width)
+
+
+@pytest.mark.parametrize(
+    "bins,expected",
+    [
+        (
+            (
+                np.array([0.1]),
+                np.array([0.2]),
+                np.array([0.3]),
+                np.array([0.4]),
+            ),
+            np.array([0.1, 0.2, 0.3, 0.4]),
+        ),
+        (
+            (
+                np.array([0.1, 0.2]),
+                np.array([0.3, 0.4]),
+                np.array([0.5, 0.6]),
+                np.array([0.7, 0.8]),
+            ),
+            np.array([0.15, 0.35, 0.55, 0.75]),
+        ),
+        (
+            (
+                np.array([0.1, 0.2]),
+                np.array([0.3, np.nan]),
+                np.array([0.5, 0.6]),
+                np.array([np.nan, 0.8]),
+            ),
+            np.array([0.15, 0.3, 0.55, 0.8]),
+        ),
+    ],
+    ids=["single_value_bins", "multi_value_bins", "bins_with_nan"],
+)
+def test_view_generator_generate__compute_correct_values_for_bins(bins, expected):
+    """Test that the correct values are calculated for each bin."""
+    bin_function = Mock(spec=BinFunction, return_value=bins)
+    x = np.array([0, 1, 2])  # Not used because we only rely on bins from the mocked `bin_function`
+    y = np.array([0, 1, 2])  # Not used because we only rely on bins from the mocked `bin_function`
+    generator = ViewGenerator(x, y, bin_function, np.nanmedian)
+    actual = generator.generate(len(bins), (0, 10), 0.1)
+    assert_array_almost_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "x,y,default,expected",
+    [
+        (np.array([1, 2, 3]), np.array([0.1, 0.2]), 10.0, np.array([0.1, 10, 0.2])),
+        (np.array([1, 2, 3]), np.array([0.1, 0.2]), np.nan, np.array([0.1, np.nan, 0.2])),
+        (np.array([1, 2, 3]), np.array([0.1, 0.2]), np.nanmedian, np.array([0.1, 0.15, 0.2])),
+    ],
+    ids=["float", "nan", "function"],
+)
+def test_view_generator_generate__use_default_for_empty_bins(x, y, default, expected):
+    """Test that the default value/function is used for empty bins."""
+    bins = (np.array([0.1]), np.array([]), np.array([0.2]))
+    bin_function = Mock(spec=BinFunction, return_value=bins)
+    generator = ViewGenerator(x, y, bin_function, np.nanmedian, default)
+    actual = generator.generate(len(bins), (0, 10), 0.1)
+    assert_array_almost_equal(actual, expected)
