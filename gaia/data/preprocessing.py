@@ -3,7 +3,7 @@ from typing import Callable, Iterable, Protocol, TypeAlias
 
 import numpy as np
 
-from gaia.data.models import TCE, AnySeries, PeriodicEvent, Series
+from gaia.data.models import TCE, AnySeries, IterableOfSeries, ListOfSeries, PeriodicEvent, Series
 
 
 @dataclass
@@ -119,10 +119,6 @@ def compute_transits(
         ]
 
     return np.array(transits_mask)
-
-
-IterableOfSeries: TypeAlias = Iterable[Series]
-ListOfSeries: TypeAlias = list[Series]
 
 
 def _check_series_dimension(

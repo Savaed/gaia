@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, MutableMapping, TypeAlias, TypedDict
+from typing import Any, Iterable, MutableMapping, TypeAlias, TypedDict
 from uuid import UUID
 
 import numpy as np
@@ -115,6 +115,9 @@ class KeplerStellarParameters(StellarParameters):
 Series: TypeAlias = npt.NDArray[np.float_]
 IntSeries: TypeAlias = npt.NDArray[np.int_]
 AnySeries: TypeAlias = npt.NDArray[np.object_]
+
+IterableOfSeries: TypeAlias = Iterable[Series]
+ListOfSeries: TypeAlias = list[Series]
 
 
 class RawKeplerTimeSeries(TypedDict):
