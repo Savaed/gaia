@@ -24,6 +24,7 @@ dependencies = [
   "plotly",
   "pydantic",
   "rich",
+  "scipy",
   "tensorflow",
 ]
 
