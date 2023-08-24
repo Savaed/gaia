@@ -1,6 +1,75 @@
+from typing import TypeAlias
+
 import numpy as np
+import numpy.typing as npt
 
 from gaia.data.models import IterableOfSeries, Series
+
+
+BooleanArray: TypeAlias = npt.NDArray[np.bool_]
+
+
+def _compensate_robust_mean(
+    y: Series,
+    absdev: Series,
+    sigma_cut: float,
+    cut: float,
+) -> tuple[float, BooleanArray]:
+    """Compensate the estimate of standard deviation due to trimming away outliers."""
+    # Identify outliers using estimate of the standard deviation of y.
+    mask = absdev <= cut * sigma_cut
+
+    # Recompute the standard deviation, using the sample standard deviation of non-outlier points.
+    sigma_cut = np.std(y[mask])
+
+    # Compensate the estimate of sigma due to trimming away outliers. The following formula is an
+    # approximation, see http://w.astro.berkeley.edu/~johnjohn/idlprocs/robust_mean.pro.
+    max_sigma_cut = np.max([cut, 1.0])
+    if max_sigma_cut <= 4.5:
+        sigma_cut /= (
+            -0.15405
+            + 0.90723 * max_sigma_cut
+            - 0.23584 * max_sigma_cut**2
+            + 0.020142 * max_sigma_cut**3
+        )
+    return sigma_cut, mask
+
+
+def robust_mean(y: Series, sigma_cut: float) -> tuple[float, float, BooleanArray]:
+    """Computes a robust mean estimate in the presence of outliers.
+
+    Args:
+        y (Series): Values for which mean will be compute. Assumed to be normally distributed with
+            outliers
+        sigma_cut (float): Points more than this number of standard deviations from the median are
+            ignored
+
+    Returns:
+        tuple[float, float, BooleanArray]: A tuple of:
+          - A robust estimate of the mean of y.
+          - The standard deviation of the mean.
+          - A mask: values corresponding to outliers in y are `False`. All other values are `True`.
+    """
+    # Make a robust estimate of the standard deviation of y, assuming y is normally distributed.
+    # The conversion factor of 0.67449 takes the median absolute deviation (MAD) to the standard
+    # deviation of a normal distribution. See the link belowe for mor info.
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.median_abs_deviation.html?highlight=scipy%20stats%20norm
+    absdev = np.abs(y - np.median(y))
+    sigma = np.median(absdev) / 0.67449
+
+    # If the previous estimate of the standard deviation using the MAD is zero, fall back to a
+    # robust estimate using the mean absolute deviation. This estimator has a different conversion
+    # factor of 1.253. See, e.g. https://www.mathworks.com/help/stats/mad.html.
+    if np.isclose(sigma, 0.0):
+        sigma = 1.253 * np.mean(absdev)
+
+    sigma, _ = _compensate_robust_mean(y, absdev, sigma, sigma_cut)
+    sigma, mask = _compensate_robust_mean(y, absdev, sigma, sigma_cut)
+
+    # Final estimate is the sample mean with outliers removed.
+    mean = np.mean(y[mask])
+    mean_stddev = sigma / np.sqrt(len(y) - 1.0)
+    return mean, mean_stddev, mask
 
 
 def diffs(y: IterableOfSeries, scale_coeff: float = 1.0) -> Series:
@@ -27,8 +96,6 @@ def diffs(y: IterableOfSeries, scale_coeff: float = 1.0) -> Series:
 
 def bic(k: int, n: int, sigma: float, ssr: float, penalty_coeff: float = 1.0) -> float:
     """Calculate Bayesian information criterion (BIC).
-
-    Models with lower BIC are usually preferred.
 
     Args:
         k (int): Number of free parameters in a model. Must be >= 0
