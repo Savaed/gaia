@@ -1,12 +1,6 @@
-from typing import TypeAlias
-
 import numpy as np
-import numpy.typing as npt
 
-from gaia.data.models import IterableOfSeries, Series
-
-
-BooleanArray: TypeAlias = npt.NDArray[np.bool_]
+from gaia.data.models import BooleanArray, IterableOfSeries, Series
 
 
 def _compensate_robust_mean(

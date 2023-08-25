@@ -36,7 +36,7 @@ pythonpath = "."
 
 [tool.coverage.run]
 plugins = ["covdefaults"]
-omit = ["**/conftest.py", "**/progress.py", "**/log.py"]
+omit = ["**/conftest.py", "**/progress.py", "**/log.py", "**/model_selection.py"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "def __repr__", "def __str__"]

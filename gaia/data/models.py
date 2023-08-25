@@ -10,6 +10,15 @@ import numpy.typing as npt
 
 Id: TypeAlias = str | int | UUID
 
+Series: TypeAlias = npt.NDArray[np.float_]
+IntSeries: TypeAlias = npt.NDArray[np.int_]
+AnySeries: TypeAlias = npt.NDArray[np.object_]
+
+IterableOfSeries: TypeAlias = Iterable[Series]
+ListOfSeries: TypeAlias = list[Series]
+
+BooleanArray: TypeAlias = npt.NDArray[np.bool_]
+
 
 def flatten_dict(dct: MutableMapping[str, Any]) -> dict[str, Any]:
     items: list[Any] = []
@@ -110,14 +119,6 @@ class KeplerStellarParameters(StellarParameters):
     density: float
     surface_gravity: float
     metallicity: float
-
-
-Series: TypeAlias = npt.NDArray[np.float_]
-IntSeries: TypeAlias = npt.NDArray[np.int_]
-AnySeries: TypeAlias = npt.NDArray[np.object_]
-
-IterableOfSeries: TypeAlias = Iterable[Series]
-ListOfSeries: TypeAlias = list[Series]
 
 
 class RawKeplerTimeSeries(TypedDict):
