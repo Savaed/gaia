@@ -18,6 +18,7 @@ dependencies = [
   "duckdb",
   "fakeredis",
   "hydra-core",
+  "hypothesis",
   "loguru",
   "numpy",
   "pandas",
