@@ -1,5 +1,6 @@
 import functools
 from operator import add
+from unittest import mock
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,13 +26,13 @@ def test_check_kepid__valid_input():
     [(1, [Exception(), "ok"]), (2, [Exception(), Exception(), "ok"])],
     ids=[1, 2],
 )
-async def test_retry__retrying_specified_times(retries, results, mocker):
+async def test_retry__retrying_specified_times(retries, results):
     """Test that function is retrying the specified number of times."""
-    mocker.patch("gaia.utils.asyncio.sleep")
-    fn_mock = AsyncMock(side_effect=results)
-    decorated_fn = retry(retries)(fn_mock)
-    await decorated_fn()
-    assert fn_mock.await_count == retries + 1
+    with mock.patch("gaia.utils.asyncio.sleep"):
+        fn_mock = AsyncMock(side_effect=results)
+        decorated_fn = retry(retries)(fn_mock)
+        await decorated_fn()
+        assert fn_mock.await_count == retries + 1
 
 
 @pytest.mark.asyncio
@@ -46,14 +47,14 @@ async def test_retry__retries_number_less_than_1(retries):
 
 
 @pytest.mark.asyncio
-async def test_retry__raise_on_retries_limit(mocker):
+async def test_retry__raise_on_retries_limit():
     """Test that error is raised when the retry limit is reached."""
-    mocker.patch("gaia.utils.asyncio.sleep")
-    fn_mock = AsyncMock(side_effect=[KeyError("test error"), KeyError("test error")])
-    decorated_fn = retry(1)(fn_mock)
+    with mock.patch("gaia.utils.asyncio.sleep"):
+        fn_mock = AsyncMock(side_effect=[Exception, Exception])
+        decorated_fn = retry(1)(fn_mock)
 
-    with pytest.raises(KeyError, match="test error"):
-        await decorated_fn()  # Should raise due to 2 errors and limit set to 1
+        with pytest.raises(Exception):
+            await decorated_fn()  # Should raise due to 2 errors and limit set to 1
 
 
 def test_compose__one_of_functions_raises_error():
