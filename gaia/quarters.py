@@ -1,5 +1,7 @@
 """Quarter prefixes for Kepler time series features."""
 
+import itertools
+
 from gaia.enums import Cadence
 
 
@@ -64,4 +66,4 @@ def get_quarter_prefixes(cadence: Cadence) -> tuple[str, ...]:
         if cadence is Cadence.SHORT
         else LONG_CADENCE_QUARTER_PREFIXES
     )
-    return tuple(prefix for prefixes in queraters for prefix in prefixes)
+    return tuple(itertools.chain.from_iterable(queraters))
