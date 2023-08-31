@@ -48,14 +48,14 @@ def robust_mean(y: Series, sigma_cut: float) -> tuple[float, float, BooleanArray
     # The conversion factor of 0.67449 takes the median absolute deviation (MAD) to the standard
     # deviation of a normal distribution. See the link belowe for mor info.
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.median_abs_deviation.html?highlight=scipy%20stats%20norm
-    absdev = np.abs(y - np.median(y))
-    sigma = np.median(absdev) / 0.67449
+    absdev = np.abs(y - np.nanmedian(y))
+    sigma = np.nanmedian(absdev) / 0.67449
 
     # If the previous estimate of the standard deviation using the MAD is zero, fall back to a
     # robust estimate using the mean absolute deviation. This estimator has a different conversion
     # factor of 1.253. See, e.g. https://www.mathworks.com/help/stats/mad.html.
     if np.isclose(sigma, 0.0):
-        sigma = 1.253 * np.mean(absdev)
+        sigma = 1.253 * np.nanmean(absdev)
 
     sigma, _ = _compensate_robust_mean(y, absdev, sigma, sigma_cut)
     sigma, mask = _compensate_robust_mean(y, absdev, sigma, sigma_cut)
