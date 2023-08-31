@@ -1,7 +1,10 @@
 from unittest.mock import Mock
 
+import hypothesis.extra.numpy as npst
+import hypothesis.strategies as st
 import numpy as np
 import pytest
+from hypothesis import event, given
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from gaia.data.models import TCE, PeriodicEvent, TceLabel
@@ -9,6 +12,8 @@ from gaia.data.preprocessing import (
     AdjustedPadding,
     BinFunction,
     InvalidDimensionError,
+    Spline,
+    SplineError,
     ViewGenerator,
     compute_euclidean_distance,
     compute_global_view_bin_width,
@@ -26,130 +31,23 @@ from gaia.data.preprocessing import (
 from tests.conftest import assert_iterable_of_arrays_almost_equal, assert_iterable_of_arrays_equal
 
 
-@pytest.fixture(params=["simple", "large_epoch", "negative_epoch", "negative_time"])
-def time_to_fold(request):
-    """Return data to test time vector folding in form of `(time, expected, period, epoch)`."""
-    time = np.arange(0, 2, 0.1)
-    period = 1
-
-    data = {
-        "simple": (
-            time,
-            [
-                -0.45,
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-                -0.45,
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-            ],
-            period,
-            0.45,
-        ),
-        "large_epoch": (
-            time,
-            [
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-                -0.45,
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-                -0.45,
-                -0.35,
-            ],
-            period,
-            1.25,
-        ),
-        "negative_epoch": (
-            time,
-            [
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-                -0.45,
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-                -0.45,
-            ],
-            period,
-            -1.65,
-        ),
-        "negative_time": (
-            np.arange(-3, -1, 0.1),
-            [
-                0.45,
-                -0.45,
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-                0.45,
-                -0.45,
-                -0.35,
-                -0.25,
-                -0.15,
-                -0.05,
-                0.05,
-                0.15,
-                0.25,
-                0.35,
-            ],
-            period,
-            0.55,
-        ),
-    }
-    return data[request.param]
+times = npst.arrays(
+    np.float_,
+    20,
+    elements=st.floats(min_value=0, max_value=1e6, allow_nan=False, allow_infinity=False),
+    unique=True,
+)
 
 
-def test_phase_fold_time__return_correct_data(time_to_fold):
+@given(
+    times,
+    st.floats(min_value=0, max_value=1000, exclude_min=True, allow_infinity=False, allow_nan=False),
+    st.floats(min_value=0, max_value=10_000, allow_infinity=False, allow_nan=False),
+)
+def test_phase_fold_time__return_correct_data(time, period, epoch):
     """Test that the returned time is properly folded over an event phase."""
-    time, expected, period, epoch = time_to_fold
     actual = phase_fold_time(time, epoch=epoch, period=period)
-    assert_array_almost_equal(actual, expected)
+    assert np.all((actual >= -period / 2) & (actual <= period / 2))
 
 
 @pytest.mark.parametrize("period", [-1, 0])
@@ -161,49 +59,41 @@ def test_phase_fold_time__invalid_parameters(period):
 
 def test_phase_fold_time__invalid_data_dimension():
     """Test that `InvalidDimensionError` is raised when `time` dimension != 1."""
-    time = np.arange(10.0).reshape((2, 5))
+    time = np.arange(10.0).reshape((2, -1))
     with pytest.raises(InvalidDimensionError):
         phase_fold_time(time, epoch=1, period=1)
 
 
-@pytest.mark.parametrize(
-    "time,series,expected",
-    [
-        ([np.array([])], [np.array([])], ([], [])),
-        ([], [], ([], [])),
-        (
-            [np.array([0.1, 0.2, 0.3, 1.1, 1.2])],
-            [np.array([1, 2, 3, 4, 5])],
-            (
-                [np.array([0.1, 0.2, 0.3]), np.array([1.1, 1.2])],
-                [np.array([1, 2, 3]), np.array([4, 5])],
-            ),
+@st.composite
+def time_series_with_gap(draw, series_elements=None):
+    time = draw(st.lists(times))
+    time_len = len(time)
+    series = draw(
+        st.lists(
+            npst.arrays(np.float_, 20, elements=series_elements),
+            min_size=time_len,
+            max_size=time_len,
         ),
-        (
-            [np.array([0.1, 0.2, 0.3, 1.1, 1.2]), np.array([1.3, 1.4])],
-            [np.array([1, 2, 3, 4, 5]), np.array([6, 7])],
-            (
-                [np.array([0.1, 0.2, 0.3]), np.array([1.1, 1.2]), np.array([1.3, 1.4])],
-                [np.array([1, 2, 3]), np.array([4, 5]), np.array([6, 7])],
-            ),
-        ),
-    ],
-    ids=["empty_segments", "empty_series", "single_segment", "multiple_segments"],
-)
-def test_split_arrays__return_correct_data(time, series, expected):
+    )
+    gap = sorted([np.diff(t).max() for t in time])[0] - 1e-4 if time else 0.5
+    return time, series, gap
+
+
+@given(time_series_with_gap())
+def test_split_arrays__return_correct_data(x):
     """Test that time and time series features are properly split."""
-    actual_time, actual_series = split_arrays(time, series)
-    expected_time, expected_series = expected
-    assert_iterable_of_arrays_equal(actual_time, expected_time)
-    assert_iterable_of_arrays_equal(actual_series, expected_series)
+    time, series, gap = x
+    event(str(time))
+    actual_time, _ = split_arrays(time, series)
+    assert all([np.diff(t).max() <= gap for t in actual_time if len(t) > 1])
 
 
 @pytest.mark.parametrize("gap_width", [-1.0, 0.0])
 def test_split_arrays__invalid_gap_width(gap_width):
-    """Test that `ValueError` is raised when `gap_width` < 0."""
+    """Test that `ValueError` is raised when `gap` <= 0."""
     series = [np.array([1, 2, 3])]
-    with pytest.raises(ValueError, match="'gap_width' > 0"):
-        split_arrays(series, series, gap_with=gap_width)
+    with pytest.raises(ValueError, match="'gap' > 0"):
+        split_arrays(series, series, gap=gap_width)
 
 
 @pytest.mark.parametrize(
@@ -944,3 +834,110 @@ def test_view_generator_generate__use_default_for_empty_bins(x, y, default, expe
     generator = ViewGenerator(x, y, bin_function, np.nanmedian, default)
     actual = generator.generate(len(bins), (0, 10), 0.1)
     assert_array_almost_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "max_iter,k,sigma_cut,x,y,knots_spacing",
+    [
+        (-1, 2, 3.0, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (0, 2, 3.0, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (2, -1, 3.0, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (2, 0, 3.0, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (2, 6, 3.0, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (2, 3, -1, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (2, 3, 0, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([0.5])),
+        (2, 3, 2, [], [], np.array([0.5])),
+        (2, 3, 2, [np.array([])], [np.array([])], np.array([0.5])),
+        (2, 3, 2, [np.arange(0, 1, 0.1)], [np.arange(0, 1, 0.1)], np.array([])),
+    ],
+    ids=[
+        "max_iter_negative",
+        "max_iter_equal_zero",
+        "k_negative",
+        "k_equal_zero",
+        "k_equal_to_big",
+        "sigma_cut_negative",
+        "sigma_cut_equal_zero",
+        "empty_x_and_y",
+        "empty_segments_for_x_and_y",
+        "empty_knots_spacing",
+    ],
+)
+def test_spline_fit__invalid_inputs(max_iter, k, sigma_cut, x, y, knots_spacing):
+    """Test that `ValueError` is raised when any of inputs is invalid."""
+    spline = Spline(knots_spacing, k, max_iter, sigma_cut)
+    with pytest.raises(ValueError):
+        spline.fit(x, y)
+
+
+def rmse(y, yy):
+    """Compute root mean squared error (RMSE)."""
+    return np.sqrt(np.mean((y - yy) ** 2))
+
+
+@pytest.fixture(params=["sin", "sin_with_outliers", "cubic"])
+def fit_functions(request):
+    """Return `x`, `y` and valid points `mask` for testing spline fit functions."""
+    function = request.param
+    x = np.arange(0, 10, 0.1)
+    mask = np.ones_like(x, dtype=bool)
+
+    if function == "sin":
+        y = np.sin(x)
+    elif function == "sin_with_outliers":
+        y = np.sin(x)
+        y[20] = -9
+        y[50] = 9
+        y[80] = -9
+        mask[20] = False
+        mask[50] = False
+        mask[80] = False
+    elif function == "cubic":
+        y = (x - 5) ** 3 + 2 * (x - 5) ** 2 + 10
+    else:
+        raise ValueError(f"Unsupported {function=}")  # pragma: no cover
+
+    return x, y, mask
+
+
+def test_spline_fit__fit_curve(fit_functions):
+    """Test that for smooth functions spline fit is close to the original y-values."""
+    x, y, _ = fit_functions
+    spline = Spline(np.array([0.5]))
+    actual_fit, actual_mask = spline.fit([x], [y])
+    actual_rmse = rmse(actual_fit[0][actual_mask[0]], y[actual_mask[0]])
+    assert actual_rmse < 1e-4
+
+
+@pytest.mark.parametrize(
+    "knots_spacing,x,y",
+    [
+        (np.array([0.5]), [np.array([1, 2])], [np.array([1, 2])]),
+        (
+            np.array([0.1]),
+            [np.arange(0, 10, 0.1)],
+            [np.sin(np.arange(0, 10, 0.1))],
+        ),
+        (
+            np.array([0.5]),
+            [np.repeat(np.nan, 10)],
+            [np.repeat(np.nan, 10)],
+        ),
+        (
+            np.array([0.5]),
+            [np.array([1, 2, 3, 4])],
+            [np.array([0, np.nan, 0, np.nan])],
+        ),
+    ],
+    ids=[
+        "to_many_points",
+        "knots_spacing_leds_to_error",
+        "only_nans",
+        "to_many_outliers",
+    ],
+)
+def test_spline_fit__cannot_fit_segments(knots_spacing, x, y):
+    """Test that `SplineError` is raised when cannot fit segments."""
+    spline = Spline(knots_spacing)
+    with pytest.raises(SplineError):
+        spline.fit(x, y)

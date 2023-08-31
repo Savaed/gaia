@@ -2,8 +2,18 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, Protocol, TypeAlias
 
 import numpy as np
+import scipy.stats
+from scipy.interpolate import LSQUnivariateSpline
 
-from gaia.data.models import TCE, AnySeries, IterableOfSeries, ListOfSeries, PeriodicEvent, Series
+from gaia.data.models import (
+    TCE,
+    AnySeries,
+    IterableOfSeries,
+    ListOfSeries,
+    PeriodicEvent,
+    Series,
+)
+from gaia.stats import BooleanArray, bic, diffs, robust_mean
 
 
 @dataclass
@@ -59,7 +69,7 @@ def normalize_median(series: Series) -> Series:
 
 
 def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
-    """Create a phase-folded time vector.
+    """Create a phase-folded time vector ommiting any NaN values.
 
     Args:
         time (Series): 1D array of time values
@@ -79,6 +89,7 @@ def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
     if time.ndim != 1:
         raise InvalidDimensionError(required_dim=1, actual_dim=time.ndim)
 
+    # time = time[np.isfinite((time))]  # Remove nan values.
     half_period = period / 2
     folded_time = np.mod(time + (half_period - epoch), period)
     folded_time -= half_period
@@ -104,6 +115,7 @@ def compute_transits(
         AnySeries: A mask indicating for which time values TCE transit occurs. For transit
         points the name or ID of TCE will be included in the transit mask.
     """
+
     ndim = time.ndim
     if ndim != 1:
         raise InvalidDimensionError(required_dim=1, actual_dim=ndim, invalid_parameters_name="time")
@@ -137,33 +149,44 @@ def _check_series_dimension(
 
 
 def split_arrays(
-    time: IterableOfSeries,
-    series: IterableOfSeries,
-    gap_with: float = 0.75,
+    time: ListOfSeries,
+    series: ListOfSeries,
+    gap: float = 0.75,
 ) -> tuple[ListOfSeries, ListOfSeries]:
     """Split time series at gaps.
+
+    If the time is not sorted in ascending order, it will be sorted internally.
 
     Args:
         time (IterableOfSeries): An iterable of 1D arrays of time values
         series (IterableOfSeries): An iterable of 1D arrays of time series features corresponding
         to the `time`
-        gap_with (float, optional): Minimum time gap (in units of time) for split. Defaults to 0.75.
+        gap (float, optional): Minimum time gap (in units of time) for split. Defaults to 0.75.
 
     Raises:
-        ValueError: `gap_width` <= 0 OR `time` and `series` lengths are different
+        ValueError: `gap` <= 0 OR `time` and `series` lengths are different
         InvalidDimensionError: Any of `time` or `series` values has dimension != 1
 
     Returns:
         tuple[ListOfSeries, ListOfSeries]: Splitted time and series arrays
     """
-    if gap_with <= 0:
-        raise ValueError(f"Expected 'gap_width' > 0, but got {gap_with=}")
+    if gap <= 0:
+        raise ValueError(f"Expected 'gap' > 0, but got {gap=}")
+
+    time_diff = [np.diff(t) for t in time]
+
+    if any(np.any(d < 0) for d in time_diff):
+        for i, (t, s) in enumerate(zip(time, series)):
+            sort_indices = np.argsort(t)
+            time[i] = t[sort_indices]
+            series[i] = s[sort_indices]
+
     _check_series_dimension(time, "time")
     _check_series_dimension(series, "series")
 
     out_series: ListOfSeries = []
     out_time: ListOfSeries = []
-    split_indicies = [np.argwhere(np.diff(t) > gap_with).flatten() + 1 for t in time]
+    split_indicies = [np.argwhere(np.diff(t) > gap).flatten() + 1 for t in time]
 
     for time_segment, series_segment, split_index in zip(time, series, split_indicies):
         out_time.extend(np.array_split(time_segment, split_index))
@@ -616,3 +639,216 @@ class ViewGenerator:
             for bin in bins
         ]
         return np.array(view)
+
+
+@dataclass
+class InsufficientPointsError(Exception):
+    """Raised when insufficient points are available for spline fitting."""
+
+    available_points: int
+    num_min_points: int
+
+
+class SplineError(Exception):
+    """Raised when an error occurs in the underlying spline-fitting implementation."""
+
+
+class Spline:
+    def __init__(
+        self,
+        knots_spacing: Series,
+        k: int = 3,
+        max_iter: int = 5,
+        sigma_cut: float = 3.0,
+        penalty_coeff: float = 1.0,
+    ) -> None:
+        self._knots_spacing = knots_spacing
+        self._k = k
+        self._max_iter = max_iter
+        self._sigma_cut = sigma_cut
+        self._penalty_coeff = penalty_coeff
+
+    def fit(
+        self,
+        x: IterableOfSeries,
+        y: IterableOfSeries,
+    ) -> tuple[ListOfSeries, list[BooleanArray]]:
+        """Calculate the best fit spline for each value segment, omitting the nan values.
+
+        The spline is fitted using an iterative process of removing outliers that can cause the
+        spline be "pulled" by points with extreme values. In each iteration, the spline is fitted,
+        and if they are any points where the absolute deviation from the median (MAD) of the
+        outliers is at least 3 * sigma (where sigma is an estimate of the standard deviation of the
+        residuals) these points are removed, and the spline is re-fitted.
+
+        Args:
+            x (IterableOfSeries): X-axis values segments
+            y (IterableOfSeries): Y-axis values segments
+
+        Raises:
+            ValueError: Any of following cases:
+              - knots spacing is an empty numpy array,
+              - max iteration < 1,
+              - spline degree not in range of [1, 5],
+              - sigma cut <= 0,
+              - x or y are empty lists,
+              - All x and/or y segments are empty arrays.
+
+            SplineError: Segments cannot be fit
+
+        Returns:
+            tuple[ListOfSeries, list[BooleanArray]]: Best fitted b-splines for each time segment and
+                masks which indicate which points were used to fit a spline
+        """
+        self._validate_fit_parameters(x, y)
+
+        best_bic = np.inf
+        best_spline: ListOfSeries = []
+        sqrt_2 = 1.4142135623730951
+        y_diffs = diffs(y, sqrt_2)
+        sigma = scipy.stats.median_abs_deviation(y_diffs, scale="normal", nan_policy="omit")
+
+        for spacing in self._knots_spacing:
+            num_free_params = 0
+            num_points = 0
+            ssr = 0
+            spline_mask: list[BooleanArray] = []
+            spline: ListOfSeries = []
+            is_invalid_knots = False
+
+            for xi, yi in zip(x, y):
+                # Add an empty array if there is no x-values and skip this segment.
+                if not xi.any():  # pragma: no cover
+                    spline.append(np.array([]))
+                    continue
+
+                if np.isnan(xi).all():
+                    # Add nans if the entire segments contains only nan values
+                    xi_len = xi.size
+                    spline.append(np.repeat(np.nan, xi_len))
+                    spline_mask.append(np.zeros_like(yi, dtype=bool))
+                    continue
+
+                current_knots = np.arange(np.nanmin(xi) + spacing, np.nanmax(xi), spacing)
+
+                try:
+                    spline_piece, mask = self._fit_segment(xi, yi, knots=current_knots)
+                except InsufficientPointsError:
+                    # After removing outliers there are less poinst than neccesery to fit a spline
+                    # or the entire x segement is to small.
+                    spline.append(np.repeat(np.nan, yi.size))
+                    spline_mask.append(np.zeros_like(yi, dtype=bool))
+                    continue
+                except SplineError:
+                    # Current knots spacing led to the internal spline error. Skip this spacing.
+                    is_invalid_knots = True
+                    continue
+
+                spline.append(spline_piece)
+                spline_mask.append(mask)
+
+                # Number of free parameters = number of knots + degree of spline - 1
+                num_free_params += len(current_knots) + self._k - 1
+
+                # Accumulate the number of points used to fit a spline and the squared residuals.
+                num_points += np.count_nonzero(mask)
+                ssr += np.sum((yi[mask] - spline_piece[mask]) ** 2)
+
+            if is_invalid_knots or not num_points:
+                # self.log.warning("Skipping current knots spacing", spacing=spacing)
+                continue
+
+            best_spline = self._determine_best_spline(
+                best_bic,
+                best_spline,
+                sigma,
+                num_free_params,
+                num_points,
+                ssr,
+                spline,
+            )
+
+        if not best_spline:
+            raise SplineError("Spline fitting failes for all time series segments")
+
+        return best_spline, spline_mask
+
+    def _determine_best_spline(
+        self,
+        best_bic: float,
+        best_spline: ListOfSeries,
+        sigma: float,
+        num_free_params: int,
+        num_points: int,
+        ssr: float,
+        spline: ListOfSeries,
+    ) -> ListOfSeries:
+        """Select the best spline (with lower BIC) for the current knots spacing."""
+        current_bic = bic(
+            k=num_free_params,
+            n=num_points,
+            sigma=sigma,
+            ssr=ssr,
+            penalty_coeff=self._penalty_coeff,
+        )
+        if current_bic < best_bic or best_spline is None:  # pragma: no cover
+            best_bic = current_bic
+            best_spline = spline
+
+        return best_spline
+
+    def _validate_fit_parameters(self, x: IterableOfSeries, y: IterableOfSeries) -> None:
+        """Raise `ValueError` is any of `self.fit()` parameters is invalid."""
+        if not self._knots_spacing.any():
+            raise ValueError("Knots spacing cannot be an empty array")
+        if self._max_iter < 1:
+            raise ValueError(f"Expected 'max_iter' to be at least 1, but got {self._max_iter}")
+        if not 1 <= self._k <= 5:
+            raise ValueError(
+                f"Degree of a spline 'k' must be in the range [1, 5], but got {self._k}",
+            )
+        if self._sigma_cut <= 0:
+            raise ValueError(f"Expected 'sigma_cut' to be > 0, but got {self._sigma_cut}")
+        if not x or not y:
+            raise ValueError("No values provided to 'x' or 'y' parameter")
+
+        is_all_x_empty = not any((xi.any() for xi in x))
+        is_all_y_empty = not any((yi.any() for yi in y))
+        if is_all_x_empty or is_all_y_empty:
+            raise ValueError("All segments in 'x' or 'y' are empty")
+
+    def _fit_segment(self, x: Series, y: Series, knots: Series) -> tuple[Series, BooleanArray]:
+        """Fit 1D segment of values."""
+        x_len = len(x)
+        if x_len <= self._k:
+            raise InsufficientPointsError(available_points=x_len, num_min_points=self._k + 1)
+
+        # Values of the best fitting spline evaluated at the time segment
+        spline = np.array([])
+        spline_mask = np.isfinite(y)  # Try to fit all finite points
+
+        for _ in range(self._max_iter):
+            if spline.any():
+                # Choose finite points where the absolute deviation from the median residual is less
+                # than outlier_cut*sigma, where sigma is a robust estimate of the standard deviation
+                # of the residuals from the previous spline.
+                residuals = y - spline
+                _, _, new_mask = robust_mean(residuals, sigma_cut=self._sigma_cut)
+
+                if np.array_equal(new_mask, spline_mask):
+                    break  # Spline converged
+
+                spline_mask = new_mask
+
+            available_points = np.count_nonzero(spline_mask)
+            if available_points <= self._k:
+                raise InsufficientPointsError(available_points, num_min_points=self._k + 1)
+
+            try:
+                spline = LSQUnivariateSpline(x[spline_mask], y[spline_mask], k=self._k, t=knots)(x)
+            except ValueError:
+                # Occasionally, knot spacing leads to the choice of incorrect knots.
+                # Raise SplainError and then skip current knots spacing.
+                raise SplineError("Specified knots led to the internal spline error")
+
+        return spline, spline_mask
