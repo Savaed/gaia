@@ -1,8 +1,10 @@
 from enum import Enum
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
+import hypothesis.strategies as st
 import pytest
+from hypothesis import given
 
 from gaia.http import ApiError, download
 
@@ -14,7 +16,10 @@ class HttpMethod(Enum):
     GET = "get"
 
 
-def aiohttp_error(error_type, status):
+def aiohttp_error(
+    error_type: type,
+    status: int,
+) -> Exception | aiohttp.ClientResponseError | aiohttp.ClientOSError:
     """Return an `aiohttp` error object based on the specified error type."""
     error_msg = "test error"
     match error_type:
@@ -23,6 +28,8 @@ def aiohttp_error(error_type, status):
             return aiohttp.ClientResponseError(request_info, None, message=error_msg, status=status)
         case aiohttp.ClientOSError:  # pragma: no cover
             return aiohttp.ClientOSError(status, error_msg)
+        case _:
+            return Exception(error_msg)
 
 
 @pytest.fixture(
@@ -41,11 +48,11 @@ def aiohttp_error(error_type, status):
         "http_404_not_found",
     ],
 )
-def error_response(request, mocker):
+def error_response(request):
     """Mock `aiohttp.ClientSession` HTTP method to raise an error (OS or client)."""
     error, http_method = request.param
     http_method_mock = MagicMock(**{"return_value.__aenter__.side_effect": error})
-    mocker.patch.object(aiohttp.ClientSession, http_method.value, http_method_mock)
+    patch.object(aiohttp.ClientSession, http_method.value, http_method_mock)
 
 
 @pytest.mark.asyncio
@@ -57,10 +64,10 @@ async def test_download__http_or_os_error():
 
 
 @pytest.mark.asyncio
-async def test_download__return_correct_response():
+@given(st.binary())
+async def test_download__return_correct_response(response: bytes) -> None:
     """Test check whether the correct response is returned."""
-    expected = b"c1,c2\n1,2"
-    response_mock = MagicMock(**{"read": AsyncMock(return_value=expected), "status": 200})
+    response_mock = MagicMock(**{"read": AsyncMock(return_value=response), "status": 200})
     session_mock = MagicMock(**{"get.return_value.__aenter__.return_value": response_mock})
-    result = await download(TEST_URL, session_mock)
-    assert result == expected
+    actual = await download(TEST_URL, session_mock)
+    assert actual == response
