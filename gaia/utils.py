@@ -38,7 +38,7 @@ def retry(
 
     Args:
         retries (int, optional): How many retries. Must be at least 1. Defaults to 5.
-        max_seconds (int, optional): Upper limit for backoff. Defaults to 64.
+        max_seconds (int, optional): Upper limit for backoff. Must be positive. Defaults to 64.
         on (Errors | None, optional): Error(s) on which retry. If None, retry each `Exception`
         error. Defaults to None.
 
@@ -46,7 +46,9 @@ def retry(
         ValueError: `retries` less than 1
     """
     if retries < 1:
-        raise ValueError(f"'retries' must be at least 1, but got {retries=}")
+        raise ValueError(f"Expected 'retries' to be at least 1, but got {retries=}")
+    if max_seconds <= 0:
+        raise ValueError(f"Expected 'max_seconds' to be > 0, but got {max_seconds=}")
 
     errors = on or Exception
 
