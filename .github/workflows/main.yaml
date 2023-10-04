@@ -34,8 +34,8 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.0
 
-      - name: Install tox
-        run: python -m pip --disable-pip-version-check install tox virtualenv
+      - name: Install tox and poetry
+        run: python -m pip --disable-pip-version-check install tox==4.11.3 poetry==1.6.1
 
       - name: Run test via tox
         run: tox -e py
