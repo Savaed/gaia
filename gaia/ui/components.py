@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, Sequence, TypeAlias, TypedDict
+from typing import Callable, Iterable, NotRequired, Sequence, TypeAlias, TypedDict
 
 import numpy as np
 from dash import MATCH, Input, Output, State, callback, dcc, html
@@ -38,8 +38,8 @@ class _GraphData(TypedDict):
     periods: IntSeries
     time: Series
     series: Series
-    tce_tranists: AnySeries  # TODO: NotRequired[Iterable[str]] in python 3.11
-    period_edges: Series  # TODO: NotRequired[Iterable[float]] in python 3.11
+    tce_tranists: NotRequired[AnySeries]
+    period_edges: NotRequired[Series]
 
 
 ComponentId: TypeAlias = dict[str, str]
