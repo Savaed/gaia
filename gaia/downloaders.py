@@ -1,13 +1,3 @@
-"""
-Class and functions to conveniently download all kinds of time series and tabular data
-e.g. NASA data tables or Kepler light curves.
-
-Downloading from NASA's official REST API and MAST archive is supported.
-For more information on what you can download, see:
-    https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html - NASA
-    https://archive.stsci.edu/missions-and-data/kepler/kepler-bulk-downloads - MAST
-"""
-
 import asyncio
 import concurrent.futures
 import functools
@@ -18,21 +8,18 @@ from typing import Protocol, TypeAlias
 
 import aiohttp
 
-from gaia.data.models import Id
+from gaia.data.models import Id, NasaTableRequest
 from gaia.enums import Cadence
 from gaia.http import ApiError, download
 from gaia.io import Saver
 from gaia.log import logger
 from gaia.progress import ProgressBar
 from gaia.quarters import get_quarter_prefixes
-from gaia.utils import retry
-
-
-HTTPFileRequest: TypeAlias = tuple[str, str]  # (HTTP request, output filename)
+from gaia.utils import get_chunks, retry
 
 
 class RestDownloader(Protocol):
-    async def download_tables(self, requests: Iterable[HTTPFileRequest]) -> None:
+    async def download_tables(self, requests: Iterable[NasaTableRequest]) -> None:
         ...
 
     async def download_time_series(self, ids: Iterable[Id]) -> None:
@@ -48,48 +35,43 @@ _SavingTasks: TypeAlias = list[tuple[str, asyncio.Future[None]]]
 
 
 class KeplerDownloader:
-    """Downloader for fetching and saving Kepler table and time series files.
+    """Downloader for Kepler table and time series files.
 
-    Tables in and time series in FITS format are fetched asynchronously via REST API from the
-    official archives of NASA and the Mikulski Archive for Space Telescopes (MAST) and then saved
-    to the specific destination.
+    Data is download via REST API from the official archives of NASA and the Mikulski Archive for
+    Space Telescopes (MAST).
     """
 
-    def __init__(
-        self,
-        saver: Saver,
-        cadence: Cadence,
-        mast_base_url: str,
-        num_async_requests: int = 25,
-    ) -> None:
+    MAST_BASE_URL = "https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:Kepler/url/missions/kepler/lightcurves"
+    NASA_BASE_URL = "https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI"
+
+    def __init__(self, saver: Saver, cadence: Cadence, num_async_requests: int = 25) -> None:
         self._saver = saver
-        self._mast_base_url = mast_base_url.rstrip("/")
-        self._checkpoint_filepath = Path().cwd() / f"{self.__class__.__name__}_checkpoint.txt"
+        self._checkpoint_filepath = Path.cwd() / f"{self.__class__.__name__}_checkpoint.txt"
         self._cadence = cadence
         self._num_async_requests = num_async_requests
         self._missing_file_urls: list[str] = []
         self._saved_file_urls: list[str] = []
 
-    async def download_tables(self, requests: Iterable[HTTPFileRequest]) -> None:
+    async def download_tables(self, requests: Iterable[NasaTableRequest]) -> None:
         """Download tables in CSV files from the NASA archive via REST API.
 
         Downloaded files are saved to the local or external file system e.g. HDFS, AWS etc.
 
         Args:
-            requests (Iterable [str]): HTTP requests specifying which tables to download
+            requests (Iterable [NasaTableRequest]): Which tables to download
         """
         async with aiohttp.ClientSession() as sess:
-            for request, filename in requests:
-                log = logger.bind(table=filename)
+            for request in requests:
+                log = logger.bind(table=request.name)
+                url = f"{self.NASA_BASE_URL}?{request.query_string}"
                 try:
-                    table = await download(request, sess)
+                    table = await download(url, sess)
                     self._raise_for_nasa_error(table)
                 except ApiError as ex:
                     log.bind(reason=ex).warning("Cannot download NASA table")
                     continue
                 try:
-                    self._saver.save_table(filename, table)
-                    log.info("Table downloaded")
+                    self._saver.save_table(f"{request.name}.{request.format}", table)
                 except Exception as ex:
                     log.bind(reason=ex).warning("Cannot save NASA table")
 
@@ -108,8 +90,6 @@ class KeplerDownloader:
             ids (Iterable[int]): The IDs of the targets for which the time series are downloaded
         """
         queue: _TimeSeriesQueue = asyncio.Queue(self._num_async_requests)
-
-        # For Kepler, this is always a real integer, but can be the string '000123'.
         downloading_task = self._fetch_time_series(ids, queue)
         saving_task = asyncio.create_task(self._save_time_series(queue))
         await downloading_task
@@ -175,7 +155,7 @@ class KeplerDownloader:
         url: str,
         data: bytes,
     ) -> None:
-        filename = url.split("/")[-1]
+        _, _, filename = url.rpartition("/")
         task = loop.run_in_executor(pool, self._saver.save_time_series, filename, data)
         saving_tasks.append((url, task))
 
@@ -214,7 +194,7 @@ class KeplerDownloader:
             with ProgressBar() as bar:
                 task_id = bar.add_task("Downloading FITS files", total=len(urls))
 
-                for url_batch in self._url_batches(urls):
+                for url_batch in get_chunks(urls, self._num_async_requests):
                     tasks = [self._fetch(url) for url in url_batch]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -225,7 +205,6 @@ class KeplerDownloader:
         except asyncio.CancelledError:
             if tasks:  # pragma: no cover
                 await asyncio.gather(*tasks, return_exceptions=True)
-            raise
         finally:
             self._save_missing_urls_checkpoint()
 
@@ -267,37 +246,31 @@ class KeplerDownloader:
                 raise ApiError("HTTP request timeout", 408, url)
 
     def _create_mast_urls(self, ids: Iterable[Id]) -> Iterator[str]:
-        logger.bind(unique_ids=len(set((ids)))).info("Creating MAST HTTP URLs")
+        logger.bind(unique_ids=len(set(ids))).info("Creating MAST HTTP URLs")
         # This produces urls like e.g:
         # https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:Kepler/url/missions/kepler/lightcurves/0008/000892376//kplr000892376-2009166043257_llc.fits
         for id_ in ids:
-            id_str = f"{str(id_):0>9}"
-            url = f"{self._mast_base_url}/{id_str[:4]}/{id_str}//kplr{id_str}"
+            target_id_str = f"{str(id_):0>9}"
+            url = f"{self.MAST_BASE_URL}/{target_id_str[:4]}/{target_id_str}//kplr{target_id_str}"
             yield from (
-                f"{url}-{pref}_{self._cadence.value}.fits"
-                for pref in get_quarter_prefixes(self._cadence)
+                f"{url}-{prefix}_{self._cadence.value}.fits"
+                for prefix in get_quarter_prefixes(self._cadence)
             )
 
     def _filter_urls(self, urls: Iterable[str]) -> list[str]:
         logger.info("Filtering URLs")
         processed_urls = set(self._checkpoint_filepath.read_text().splitlines())
+
         if processed_urls:
-            meta_path = self._checkpoint_filepath.as_posix()
             logger.info(
                 "Checkpoint file detected",
-                path=meta_path,
+                path=self._checkpoint_filepath.as_posix(),
                 processed_urls=len(processed_urls),
             )
+
         return list(set(urls) - processed_urls)
 
     def _save_meta(self, urls: list[str]) -> None:
         text = "\n".join(urls) + "\n"
-        filepath = self._checkpoint_filepath.as_posix()
-        with open(filepath, mode="a") as f:
+        with open(self._checkpoint_filepath, mode="a") as f:
             f.write(text)
-
-    def _url_batches(self, urls: list[str]) -> Iterator[list[str]]:
-        yield from (
-            urls[n : n + self._num_async_requests]
-            for n in range(0, len(urls), self._num_async_requests)
-        )
