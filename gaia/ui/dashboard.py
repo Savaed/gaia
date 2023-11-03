@@ -1,6 +1,7 @@
+from collections.abc import Callable, Iterable
 from dataclasses import asdict
 from enum import Enum
-from typing import Any, Callable, Iterable, TypeAlias, TypeVar
+from typing import Any, TypeAlias, TypeVar
 
 import numpy as np
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html
@@ -50,7 +51,7 @@ def render_rows(data: dict[str, Any], units: dict[str, str]) -> list[html.Div]:
         # Escape Enum <name, value> representation as it cannot be render via Dash (unsafe html).
         if isinstance(value, Enum):
             field_value = value.value
-        elif isinstance(value, (int, float)):
+        elif isinstance(value, int | float):
             field_value = round(value, 4)
         else:
             field_value = value

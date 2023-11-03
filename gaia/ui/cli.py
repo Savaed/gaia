@@ -1,7 +1,7 @@
+import tomllib
 from pathlib import Path
 
 import hydra
-import tomli
 from rich.console import Console
 
 
@@ -23,9 +23,9 @@ def print_header(description: str | None = None, hydra_info: bool = True) -> Non
         hydra_info (bool, optional): Whether to print a config path. Hydra config must be set.
             Defaults to True.
     """
-    project_root_dir = Path(__file__).parents[2]
-    pyproject = tomli.loads((project_root_dir / "pyproject.toml").read_text())
-    project_section = pyproject["project"]
+    project_meta_filename = Path(__file__).parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(project_meta_filename.read_text())
+    project_section = pyproject["tool"]["poetry"]
     project_version = project_section["version"]
     project_description = project_section["description"]
 

@@ -1,4 +1,5 @@
-from typing import Callable, Iterable, NotRequired, Sequence, TypeAlias, TypedDict
+from collections.abc import Callable, Iterable, Sequence
+from typing import NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 from dash import MATCH, Input, Output, State, callback, dcc, html
@@ -200,8 +201,8 @@ class TimeSeriesAIO(html.Div):
         log.info("Graph component initialized")
 
     @classmethod
-    def add_preprocessing(cls, key: str, fn: PreprocessingFunction) -> None:
-        cls._preprocessing[key] = fn
+    def add_preprocessing(cls, key: str, func: PreprocessingFunction) -> None:
+        cls._preprocessing[key] = func
 
     @staticmethod
     @callback(

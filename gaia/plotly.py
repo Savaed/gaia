@@ -1,5 +1,6 @@
+from collections.abc import Iterable
 from itertools import zip_longest
-from typing import Any, Iterable, TypedDict
+from typing import Any, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -98,7 +99,7 @@ def plot_tces_histograms(events: Iterable[PeriodicEvent]) -> tuple[go.Figure, go
         px.histogram(
             x=np.log10([event.duration for event in events]),
             marginal="box",
-            labels={"x": "Transit duration [log10(hour)]"},
+            labels={"x": "Transit duration [log10(day)]"},
             height=300,
         ),
     )
