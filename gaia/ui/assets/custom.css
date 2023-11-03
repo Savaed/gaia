@@ -517,13 +517,11 @@ input.target-or-tce-search-bar {
     height: 100%;
     background-color: var(--color-info-dark);
     border-radius: 16px;
-    /*translateX(-(w-h))*/
     transform: translateX(-16px);
     transition: 200ms;
 }
 
 .switch input:checked+.slider:before {
-    /*translateX(w-h)*/
     transform: translateX(16px);
     background-color: var(--color-success);
 }
