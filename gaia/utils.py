@@ -1,7 +1,7 @@
 import asyncio
 import functools
 import random
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from typing import ParamSpec, TypeAlias, TypeVar
 
 from gaia.log import logger
@@ -83,3 +83,11 @@ TOutput = TypeVar("TOutput")
 
 def compose(*composable_funcs: Callable[[TInput], TOutput]) -> Callable[[TInput], TOutput]:
     return functools.reduce(lambda f, g: lambda x: g(f(x)), composable_funcs)  # type: ignore
+
+
+T = TypeVar("T")
+
+
+# TODO: In python 3.12 change this function to itertools.batched()
+def get_chunks(collection: list[T], size: int) -> Iterator[list[T]]:
+    yield from [collection[n : n + size] for n in range(0, len(collection), size)]
