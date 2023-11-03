@@ -24,12 +24,12 @@ from tests.conftest import assert_dict_with_numpy_equal
 def test_map_kepler_time_series__data_mapped_correctly():
     """Test that `RawKeplerTimeSeries` is correctly mapped to `KeplerTimeSeries`."""
     raw_time_series = RawKeplerTimeSeries(
-        id=1,
-        period=1,
-        time=[],
-        pdcsap_flux=[4, 5, 6],
-        mom_centr1=[7.0, 8.0, 9.0],
-        mom_centr2=[10, 11, 12],
+        KEPLERID=1,
+        QUARTER=1,
+        TIME=[],
+        PDCSAP_FLUX=[4, 5, 6],
+        MOM_CENTR1=[7.0, 8.0, 9.0],
+        MOM_CENTR2=[10, 11, 12],
     )
     expected = KeplerTimeSeries(
         id=1,
@@ -46,12 +46,12 @@ def test_map_kepler_time_series__data_mapped_correctly():
 def test_map_kepler_time_series__missing_key_in_source_data():
     """Test that `MapperError` is raised when the source dict has no required key(s)."""
     raw_time_series = dict(
-        period=1,
-        time=[1, 2, 3],
-        pdcsap_flux=[4, 5, 6],
-        mom_centr1=[7.0, 8.0, 9.0],
-        mom_centr2=[10, 11, 12],
-    )  # Missing `id`
+        QUARTER=1,
+        TIME=[1, 2, 3],
+        PDCSAP_FLUX=[4, 5, 6],
+        MOM_CENTR1=[7.0, 8.0, 9.0],
+        MOM_CENTR2=[10, 11, 12],
+    )  # Missing `KEPLERID`
     with pytest.raises(MapperError):
         map_kepler_time_series(raw_time_series)  # type: ignore
 
@@ -132,6 +132,8 @@ def test_map_kepler_tce__data_mapped_correctly(kepler_name):
         tce_duration=24.0,
         tce_period=10.0,
         kepler_name=kepler_name,
+        tce_maxmesd=11.0,
+        wst_depth=13.0,
         label=TceLabel.PC.name,  # Tce label mapping tested separately.
     )
     expected = KeplerTCE(
@@ -139,7 +141,7 @@ def test_map_kepler_tce__data_mapped_correctly(kepler_name):
         target_id=1,
         name=kepler_name,
         label=TceLabel.PC,
-        event=PeriodicEvent(duration=1.0, epoch=9.0, period=10.0),
+        event=PeriodicEvent(duration=1.0, epoch=9.0, period=10.0, secondary_phase=11.0),
         opt_ghost_core_aperture_corr=2.0,
         opt_ghost_halo_aperture_corr=3.0,
         bootstrap_false_alarm_proba=4.0,
@@ -147,6 +149,7 @@ def test_map_kepler_tce__data_mapped_correctly(kepler_name):
         radius=6.0,
         fitted_period=7.0,
         transit_depth=8.0,
+        secondary_transit_depth=13.0,
     )
     actual = map_kepler_tce(raw_tce)
     assert actual == expected

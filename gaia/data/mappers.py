@@ -1,4 +1,6 @@
-from typing import Callable, TypeAlias, TypeVar
+from collections.abc import Callable, Iterable
+from dataclasses import asdict
+from typing import Any, TypeAlias, TypeVar
 
 import numpy as np
 
@@ -11,6 +13,7 @@ from gaia.data.models import (
     RawKeplerTce,
     RawKeplerTimeSeries,
     TceLabel,
+    flatten_dict,
 )
 
 
@@ -26,12 +29,12 @@ class MapperError(Exception):
 def map_kepler_time_series(source: RawKeplerTimeSeries) -> KeplerTimeSeries:
     try:
         return KeplerTimeSeries(
-            id=source["id"],
-            time=np.array(source["time"]),
-            mom_centr1=np.array(source["mom_centr1"]),
-            mom_centr2=np.array(source["mom_centr2"]),
-            pdcsap_flux=np.array(source["pdcsap_flux"]),
-            period=source["period"],
+            id=source["KEPLERID"],
+            time=np.array(source["TIME"]),
+            mom_centr1=np.array(source["MOM_CENTR1"]),
+            mom_centr2=np.array(source["MOM_CENTR2"]),
+            pdcsap_flux=np.array(source["PDCSAP_FLUX"]),
+            period=source["QUARTER"],
         )
     except KeyError as ex:
         raise MapperError(f"Key '{ex}' not found in the source RawKeplerTimeSeries object")
@@ -81,6 +84,7 @@ def map_kepler_tce(source: RawKeplerTce) -> KeplerTCE:
                 epoch=source["tce_time0bk"],
                 duration=source["tce_duration"] / 24,  # Convert hours to days
                 period=source["tce_period"],
+                secondary_phase=source["tce_maxmesd"],
             ),
             opt_ghost_core_aperture_corr=source["tce_cap_stat"],
             opt_ghost_halo_aperture_corr=source["tce_hap_stat"],
@@ -89,6 +93,18 @@ def map_kepler_tce(source: RawKeplerTce) -> KeplerTCE:
             radius=source["tce_prad"],
             rolling_band_fgt=source["tce_rb_tcount0"],
             transit_depth=source["tce_depth"],
+            secondary_transit_depth=source["wst_depth"],
         )
     except KeyError as ex:
         raise MapperError(f"Key '{ex}' not found in the source RawKeplerTce object")
+
+
+def map_dataclass_to_flat_dict(source: Any, exclude: Iterable[str] | None = None) -> dict[str, Any]:
+    exclude = exclude or []
+    try:
+        dct = asdict(source)
+    except TypeError:
+        raise MapperError("Expected 'source' to be a dataclass instance")
+    flat_dict = flatten_dict(dct)
+    clean_dict = {k: v for k, v in flat_dict.items() if k not in exclude}
+    return clean_dict
