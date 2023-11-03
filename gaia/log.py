@@ -1,7 +1,18 @@
 import sys
+from enum import Enum
 from typing import Any
 
 from loguru import logger
+
+
+class LoggingLevel(Enum):
+    TRACE = "TRACE"  # 5
+    DEBUG = "DEBUG"  # 10
+    INFO = "INFO"  # 20
+    SUCCESS = "SUCCESS"  # 25
+    WARNING = "WARNING"  # 30
+    ERROR = "ERROR"  # 40
+    CRITICAL = "CRITICAL"  # 50
 
 
 def format_key_value_context(record: dict[str, Any]) -> str:
@@ -20,4 +31,5 @@ logger.add(
     colorize=True,
     backtrace=True,
     diagnose=True,
+    level=LoggingLevel.DEBUG.value,
 )
