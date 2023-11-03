@@ -21,31 +21,29 @@ def get_target_ids(target_id_column: str, tce_file_path: Path) -> list[Id]:
 
 
 async def main(cfg: AppConfig) -> int:
-    prepare_loop(asyncio.get_running_loop())
     cfg = AppConfig(**OmegaConf.to_object(cfg))
-    print_header(cfg.download.script_description)
 
-    if not cfg.download.verbose:
-        logger.disable("gaia.downloaders")
+    prepare_loop(asyncio.get_running_loop())
+    print_header(cfg.download.script_description)
 
     downloader: RestDownloader = hydra.utils.instantiate(cfg.download.downloader)
     try:
         if cfg.download.download_tables:
-            await downloader.download_tables(cfg.download.tables_requests)
+            await downloader.download_tables(cfg.download.tables)
         if cfg.download.download_time_series:
-            ids = get_target_ids(cfg.download.tce_file_target_id_column, cfg.download.tce_file_path)
+            ids = get_target_ids(cfg.download.tce_target_id_column, cfg.download.tce_filepath)
             await downloader.download_time_series(ids)
-    except:  # noqa
-        logger.info("Script shutdown")
+    except Exception as ex:
+        logger.info(f"Script shutdown. {ex or ''}")
 
     return 0
 
 
 @logger.catch(message="Unexpected error occurred")
-@hydra.main(config_path="../../configs", config_name="config", version_base=None)
+@hydra.main(config_path="../../configs", config_name="config", version_base="1.3")
 def main_wrapper(cfg: AppConfig) -> int:
-    raise SystemExit(asyncio.run(main(cfg)))
+    return asyncio.run(main(cfg))
 
 
 if __name__ == "__main__":
-    main_wrapper()
+    raise SystemExit(main_wrapper())
