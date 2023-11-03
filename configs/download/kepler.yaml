@@ -1,0 +1,66 @@
+script_description: |
+  Download stellar light curve time series and scalar stellar and TCE data. Save them in
+  unaltered, raw form at user-specified locations.
+
+  In order to download time series, a file with target identifiers is required, e.g. a file with
+  TCE data (can be downloaded using this script).
+
+  The script has a mechanism for retrying the download in case of an error.
+
+  The metadata of the time series downloaded once is saved in the file and time series are not
+  downloaded again the next time the script is run (unless the metadata file has been deleted).
+
+  The following table must be download manually into '${data.raw_false_positive_filepath}':
+  Kepler Certified False Positive (https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=fpwg)
+
+  Note that the size of the downloaded data is significant (about 120 GB).
+tce_filepath: ${data.raw_tce_filepath}
+tce_target_id_column: kepid
+download_tables: true
+download_time_series: true
+downloader:
+  _target_: gaia.downloaders.KeplerDownloader
+  saver:
+    _target_: gaia.io.FileSaver
+    tables_dir: ${data.raw_tables_dir}
+    time_series_dir: ${data.raw_time_series_dir}
+  cadence: llc # Cadence.LONG
+  num_async_requests: 25
+tables:
+  - name: q1_q17_dr25_tce
+    columns:
+      - kepid
+      - tce_plnt_num
+      - tce_period
+      - tce_time0bk
+      - tce_duration
+      - tce_depth
+      - tce_prad
+      - tcet_period
+      - boot_fap
+      - tce_cap_stat
+      - tce_hap_stat
+      - tce_rb_tcount0
+      - tce_maxmesd
+      - wst_depth
+    query: tce_rogue_flag=0 # Filter out invalid TCEs
+    format: csv
+  - name: q1_q17_dr25_koi
+    columns:
+      - kepid
+      - kepoi_name
+      - kepler_name
+      - koi_disposition
+      - koi_pdisposition
+      - koi_tce_plnt_num
+    format: csv
+  - name: q1_q17_dr25_stellar
+    columns:
+      - kepid
+      - teff
+      - radius
+      - mass
+      - dens
+      - logg
+      - feh
+    format: csv

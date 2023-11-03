@@ -1,0 +1,15 @@
+raw_time_series_dir: data/kepler/raw/time_series
+raw_tables_dir: data/kepler/raw/tables
+raw_targets_filepath: ${data.raw_tables_dir}/q1_q17_dr25_koi.csv
+raw_tce_filepath: ${data.raw_tables_dir}/q1_q17_dr25_tce.csv
+raw_stellar_params_filepath: ${data.raw_tables_dir}/q1_q17_dr25_stellar.csv
+raw_false_positive_filepath: ${data.raw_tables_dir}/cfp.csv
+
+interim_tables_path: data/kepler/interim/tables
+interim_time_series_path: data/kepler/interim/time_series
+interim_tce_filepath: ${data.interim_tables_path}/q1_q17_dr25_tce.parquet
+interim_stellar_params_filepath: ${data.interim_tables_path}/q1_q17_dr25_stellar.parquet
+
+final_path: data/kepler/final
+
+dashboard_assets_dir: gaia/ui/assets

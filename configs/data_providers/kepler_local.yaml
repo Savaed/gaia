@@ -1,0 +1,34 @@
+time_series:
+  _target_: gaia.data.stores.TimeSeriesStore
+  mapper:
+    _target_: gaia.data.mappers.map_kepler_time_series
+    _partial_: true
+  reader:
+    _target_: gaia.io.ParquetReader
+    data_dir: ${data.interim_time_series_path}
+tce:
+  _target_: gaia.data.stores.TceStore
+  mapper:
+    _target_: gaia.data.mappers.map_kepler_tce
+    _partial_: true
+  reader:
+    _target_: gaia.io.ParquetTableReader
+    filepath: ${data.interim_tce_filepath}
+  parameters_schema:
+    target_id: kepid
+    tce_id: tce_plnt_num
+    name: kepler_name
+    label: label
+    duration: tce_duration
+    epoch: tce_time0bk
+    period: tce_period
+stellar_params:
+  _target_: gaia.data.stores.StellarParametersStore
+  mapper:
+    _target_: gaia.data.mappers.map_kepler_stallar_parameters
+    _partial_: true
+  reader:
+    _target_: gaia.io.ParquetTableReader
+    filepath: ${data.interim_stellar_params_filepath}
+  parameters_schema:
+    id: kepid

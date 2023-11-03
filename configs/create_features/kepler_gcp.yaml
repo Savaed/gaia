@@ -1,0 +1,20 @@
+defaults:
+  - kepler_local
+
+spark:
+  cache_input_data: false
+
+test_size: 0.1
+validation_size: 0.1
+
+dataproc:
+  subnetwork_uri: default
+  main_script_uri: ${create_features.script_path}
+  region: europe-central2
+  runtime_config:
+    container_image: europe-central2-docker.pkg.dev/neon-fort-351812/test/test-dataproc:latest
+    version: "2.1"
+    properties:
+      spark:spark.executor.cores: "4"
+      spark:spark.driver.cores: "4"
+      spark:spark.executor.instances: "2"

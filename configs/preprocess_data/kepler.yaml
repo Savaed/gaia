@@ -1,0 +1,77 @@
+script_description: |
+  Convert raw files to another format, optionally loading only part of the data or metadata.
+
+  Metadata of once converted time series are saved in the file and the time series are not
+  converted again the next time the script is run (unless the metadata file has been deleted).
+
+tce_merge:
+  select_sql: SELECT tce.*, koi.* EXCLUDE(kepid), koi.kepid AS kepid_koi # Mark TCEs whose are not present in KOI
+  join_sql: "'${data.raw_tce_filepath}' tce LEFT JOIN '${data.raw_targets_filepath}' koi ON tce.kepid=koi.kepid AND tce.tce_plnt_num=koi.koi_tce_plnt_num LEFT JOIN '${data.raw_false_positive_filepath}' cfp ON koi.kepoi_name=cfp.kepoi_name"
+  labels_case_sql:
+    - WHEN koi.koi_disposition='CONFIRMED' THEN 'PC'
+    - WHEN cfp.fpwg_disp_status='CERTIFIED FP' THEN 'AFP'
+    - WHEN cfp.fpwg_disp_status='CERTIFIED FA' OR kepid_koi IS NULL THEN 'NTP'
+    - ELSE 'UNKNOWN'
+  output: ${data.interim_tables_path}/tce_merged.csv
+  label_column: label
+
+tce_conversion:
+  converter:
+    _target_: gaia.data.converters.CsvConverter
+    converter_type: csv
+    include_columns:
+      - kepid
+      - tce_plnt_num
+      - tce_cap_stat
+      - tce_hap_stat
+      - boot_fap
+      - tce_rb_tcount0
+      - tce_prad
+      - tcet_period
+      - tce_depth
+      - tce_time0bk
+      - tce_duration
+      - tce_period
+      - kepler_name
+      - tce_maxmesd
+      - wst_depth
+      - ${preprocess_data.tce_merge.label_column}
+  args:
+    inputs: ${preprocess_data.tce_merge.output}
+    output: ${data.interim_tce_filepath}
+
+stellar_params_conversion:
+  converter:
+    _target_: gaia.data.converters.CsvConverter
+    converter_type: csv
+    include_columns:
+      - kepid
+      - teff
+      - radius
+      - mass
+      - dens
+      - logg
+      - feh
+  args:
+    inputs: ${data.raw_stellar_params_filepath}
+    output: ${data.interim_stellar_params_filepath}
+
+time_series_conversion:
+  converter:
+    _target_: gaia.data.converters.FitsConverter
+    converter_type: fits
+    settings:
+      data_header: LIGHTCURVE
+      data_columns:
+        - TIME
+        - PDCSAP_FLUX
+        - MOM_CENTR1
+        - MOM_CENTR2
+      meta_columns:
+        - KEPLERID
+        - QUARTER
+      output_format: parquet
+      path_target_id_pattern: (?<=kplr)\d{9}
+  args:
+    inputs: ${data.raw_time_series_dir}/*.fits
+    output: ${data.interim_time_series_path}

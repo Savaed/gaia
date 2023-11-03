@@ -1,0 +1,40 @@
+script_description: |
+  Launch a website with scalar data visualization (TCE, stellar parameters and statistics) as well
+  as time series.
+assets_dir: gaia/ui/assets
+external_stylesheets:
+  - https://use.fontawesome.com/releases/v6.4.0/css/all.css
+  - https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap
+available_graphs: # Graph name to display in UI: actual time series processed
+  pdcsap_flux: pdcsap_flux
+  centroid_shift: mom_centr1,mom_centr2
+server_params:
+  debug: true
+  host: 127.0.0.1
+  port: 8050
+  dev_tools_hot_reload: true
+graphs_preprocessors:
+  pdcsap_flux:
+    _target_: gaia.data.preprocessing.normalize_median
+    _partial_: true
+  mom_centr1,mom_centr2:
+    _target_: gaia.utils.compose
+    _args_:
+      - _target_: gaia.data.preprocessing.compute_euclidean_distance
+        _partial_: true
+      - _target_: gaia.data.preprocessing.normalize_median
+        _partial_: true
+stellar_parameters_units:
+  effective_temperature: K
+  radius: Solar radii
+  mass: Solar mass
+  density: gm/cm^3
+  surface_gravity: log10(cm/s^2)
+  metallicity: dex
+planetary_parameters_units:
+  epoch: days
+  duration: days
+  period: days
+  radius: Earth radii
+  fitted_period: days
+  transit_depth: ppm
