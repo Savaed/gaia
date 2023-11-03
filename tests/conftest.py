@@ -1,7 +1,6 @@
-import asyncio
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping, TypeAlias
+from typing import Any, TypeAlias
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -44,20 +43,6 @@ def assert_dict_with_list_equal_no_order(d1: DictWithListValues, d2: DictWithLis
     tmp_d1 = {k: set(v) for k, v in d1.items()}
     tmp_d2 = {k: set(v) for k, v in d2.items()}
     assert tmp_d1 == tmp_d2
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Setup pytest-asyncio loop to be the main one.
-
-    If there is no running event loop, create one and set as the current one.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    yield loop
 
 
 def create_df(data: tuple[Iterable[Any], ...]) -> pd.DataFrame:
