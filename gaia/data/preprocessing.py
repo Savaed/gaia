@@ -1,5 +1,7 @@
+from collections.abc import Callable, Collection, Iterable
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Callable, Iterable, Protocol, TypeAlias
+from typing import Protocol, TypeAlias
 
 import numpy as np
 import scipy.stats
@@ -89,7 +91,6 @@ def phase_fold_time(time: Series, *, epoch: float, period: float) -> Series:
     if time.ndim != 1:
         raise InvalidDimensionError(required_dim=1, actual_dim=time.ndim)
 
-    # time = time[np.isfinite((time))]  # Remove nan values.
     half_period = period / 2
     folded_time = np.mod(time + (half_period - epoch), period)
     folded_time -= half_period
@@ -201,13 +202,30 @@ class EventWidthStrategy(Protocol):
 
 
 class AdjustedPadding:
-    """Compute the event time duration as `min(3*duration, abs(weak_secondary_phase), period)`."""
+    """Compute the event time duration as `min(3*duration, abs(secondary_phase), period)`."""
 
     def __init__(self, secondary_phase: float) -> None:
         self._secondary_phase = secondary_phase
 
     def __call__(self, period: float, duration: float) -> float:
         return min(3 * duration, abs(self._secondary_phase), period)
+
+
+class SecondaryTransitAdjustedPadding:
+    """Compute the event time duration to remove for secondary transit views.
+
+    It uses a following rule:
+    `if duration < abs(secondary_phase): 3*duration else: abs(secondary_phase) + duration`
+    """
+
+    def __init__(self, secondary_phase: float) -> None:
+        self._secondary_phase = secondary_phase
+
+    def __call__(self, period: float, duration: float) -> float:
+        if duration < abs(self._secondary_phase):
+            return 3 * duration
+
+        return abs(self._secondary_phase) + duration
 
 
 def remove_events(
@@ -656,7 +674,7 @@ class SplineError(Exception):
 class Spline:
     def __init__(
         self,
-        knots_spacing: Series,
+        knots_spacing: Collection[float],
         k: int = 3,
         max_iter: int = 5,
         sigma_cut: float = 3.0,
@@ -722,13 +740,6 @@ class Spline:
                     spline.append(np.array([]))
                     continue
 
-                if np.isnan(xi).all():
-                    # Add nans if the entire segments contains only nan values
-                    xi_len = xi.size
-                    spline.append(np.repeat(np.nan, xi_len))
-                    spline_mask.append(np.zeros_like(yi, dtype=bool))
-                    continue
-
                 current_knots = np.arange(np.nanmin(xi) + spacing, np.nanmax(xi), spacing)
 
                 try:
@@ -758,48 +769,26 @@ class Spline:
                 # self.log.warning("Skipping current knots spacing", spacing=spacing)
                 continue
 
-            best_spline = self._determine_best_spline(
-                best_bic,
-                best_spline,
-                sigma,
-                num_free_params,
-                num_points,
-                ssr,
-                spline,
+            current_bic = bic(
+                k=num_free_params,
+                n=num_points,
+                sigma=sigma,
+                ssr=ssr,
+                penalty_coeff=self._penalty_coeff,
             )
+
+            if current_bic < best_bic or not best_spline:
+                best_bic = current_bic
+                best_spline = spline
 
         if not best_spline:
             raise SplineError("Spline fitting failes for all time series segments")
 
         return best_spline, spline_mask
 
-    def _determine_best_spline(
-        self,
-        best_bic: float,
-        best_spline: ListOfSeries,
-        sigma: float,
-        num_free_params: int,
-        num_points: int,
-        ssr: float,
-        spline: ListOfSeries,
-    ) -> ListOfSeries:
-        """Select the best spline (with lower BIC) for the current knots spacing."""
-        current_bic = bic(
-            k=num_free_params,
-            n=num_points,
-            sigma=sigma,
-            ssr=ssr,
-            penalty_coeff=self._penalty_coeff,
-        )
-        if current_bic < best_bic or best_spline is None:  # pragma: no cover
-            best_bic = current_bic
-            best_spline = spline
-
-        return best_spline
-
     def _validate_fit_parameters(self, x: IterableOfSeries, y: IterableOfSeries) -> None:
         """Raise `ValueError` is any of `self.fit()` parameters is invalid."""
-        if not self._knots_spacing.any():
+        if len(self._knots_spacing) == 0:
             raise ValueError("Knots spacing cannot be an empty array")
         if self._max_iter < 1:
             raise ValueError(f"Expected 'max_iter' to be at least 1, but got {self._max_iter}")
@@ -812,8 +801,8 @@ class Spline:
         if not x or not y:
             raise ValueError("No values provided to 'x' or 'y' parameter")
 
-        is_all_x_empty = not any((xi.any() for xi in x))
-        is_all_y_empty = not any((yi.any() for yi in y))
+        is_all_x_empty = not any(xi.any() for xi in x)
+        is_all_y_empty = not any(yi.any() for yi in y)
         if is_all_x_empty or is_all_y_empty:
             raise ValueError("All segments in 'x' or 'y' are empty")
 
@@ -825,7 +814,7 @@ class Spline:
 
         # Values of the best fitting spline evaluated at the time segment
         spline = np.array([])
-        spline_mask = np.isfinite(y)  # Try to fit all finite points
+        mask = np.isfinite(y)  # Try to fit all finite points
 
         for _ in range(self._max_iter):
             if spline.any():
@@ -835,20 +824,62 @@ class Spline:
                 residuals = y - spline
                 _, _, new_mask = robust_mean(residuals, sigma_cut=self._sigma_cut)
 
-                if np.array_equal(new_mask, spline_mask):
+                if np.array_equal(new_mask, mask):
                     break  # Spline converged
 
-                spline_mask = new_mask
+                mask = new_mask
 
-            available_points = np.count_nonzero(spline_mask)
+            available_points = np.count_nonzero(mask)
             if available_points <= self._k:
                 raise InsufficientPointsError(available_points, num_min_points=self._k + 1)
 
             try:
-                spline = LSQUnivariateSpline(x[spline_mask], y[spline_mask], k=self._k, t=knots)(x)
+                spline = LSQUnivariateSpline(x[mask], y[mask], k=self._k, t=knots)(x)
             except ValueError:
                 # Occasionally, knot spacing leads to the choice of incorrect knots.
                 # Raise SplainError and then skip current knots spacing.
                 raise SplineError("Specified knots led to the internal spline error")
 
-        return spline, spline_mask
+        return spline, mask
+
+
+def flatten_time_series(
+    all_time: IterableOfSeries,
+    all_values: IterableOfSeries,
+    events: Iterable[PeriodicEvent],
+    gap: float,
+    spline: Spline,
+    include_empty_segments: bool = True,
+) -> Series:
+    """Remove time series low-frequency variability.
+
+    Args:
+        all_time (IterableOfSeries): Time value segments
+        all_values (IterableOfSeries): Segments of the observed values corresponding to `all_time`
+        events_with_secondary (Iterable[PeriodicEvent]): TCE transit events
+        gap (floating): Minimum width of the gap in time units at which the time series is divided
+        into smaller parts
+        spline (Spline): A spline object to use in time series fitting
+
+    Returns:
+        Series: Flattened time series with low-frequency variability removed.
+    """
+    time, raw_values = split_arrays(list(all_time), list(all_values), gap)
+    masked_time = deepcopy(time)
+    masked_values = deepcopy(raw_values)
+
+    for event in events:
+        masked_time, masked_values = remove_events(
+            masked_time,
+            [event],
+            masked_values,
+            AdjustedPadding(event.secondary_phase),  # type: ignore # TODO: Make this dynamic
+            include_empty_segments=include_empty_segments,
+        )
+
+    linearly_interpolated_spline = interpolate_masked_spline(time, masked_time, masked_values)
+    best_fitted_splines, _ = spline.fit(time, linearly_interpolated_spline)
+    concatenated_raw_values = np.concatenate(raw_values)
+    concatenated_spline = np.concatenate(best_fitted_splines)
+
+    return concatenated_raw_values / concatenated_spline
