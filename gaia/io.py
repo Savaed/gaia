@@ -1,15 +1,23 @@
+import asyncio
 import json
 import re
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Pattern, Protocol, TypeAlias
+from re import Pattern
+from typing import Any, Protocol, TypeAlias
 
 import duckdb
+import google.api_core.exceptions as gcp_exceptions
 import numpy as np
 from astropy.io import fits
+from google.cloud import storage
 
 from gaia.data.models import Id, Series
 from gaia.log import logger
+from gaia.progress import ProgressBar
+from gaia.utils import get_chunks
 
 
 class DataNotFoundError(Exception):
@@ -36,16 +44,16 @@ class Saver(Protocol):
 
 
 class FileSaver:
-    def __init__(self, tables_dir: str, time_series_dir: str) -> None:
-        self._tables_dir = tables_dir.rstrip("/")
-        self._time_series_dir = time_series_dir.rstrip("/")
+    def __init__(self, tables_dir: Path, time_series_dir: Path) -> None:
+        self._tables_dir = tables_dir.absolute()
+        self._time_series_dir = time_series_dir.absolute()
 
     def save_table(self, name: str, data: bytes) -> None:
-        destination = Path(self._tables_dir) / name
+        destination = self._tables_dir / name
         destination.write_bytes(data)
 
     def save_time_series(self, name: str, data: bytes) -> None:
-        destination = Path(self._time_series_dir) / name
+        destination = self._time_series_dir / name
         destination.write_bytes(data)
 
 
@@ -63,7 +71,7 @@ def read_fits(
 
     Args:
         filepath (str | Path): FITS file path
-        data_header (str | int): HDU extension for data. If `int` then it is zero-indexed
+        data_header (str | int): HDU extension for data. If `int` then it is one-indexed
         columns (Columns | None, optional): Data columns/fields to read. If None then all columns
         will be read. If empty sequence then no data will be returned. Defaults to None.
         meta (Columns | None, optional): Metadata columns/fields to read. If None then all columns
@@ -79,7 +87,7 @@ def read_fits(
     metadata = {}
 
     if meta:
-        header = dict(fits.getheader(filepath))
+        header = fits.getheader(filepath)
         metadata = {column: header[column] for column in meta or header}
 
     if columns is not None and len(columns) == 0:
@@ -240,24 +248,112 @@ def get_duckdb_missing_column(ex: duckdb.BinderException) -> str:
     return re.search('".*"', str(ex)).group().strip("")  # type: ignore
 
 
-def create_dir_if_not_exist(path_like: Any) -> Path:
-    """Create a directory from a given path.
+def get_bucket_name(path: str) -> tuple[str, str]:
+    """Split the full GCS blob name into the bucket name and the rest of the path.
 
     Args:
-        path_like (Any): The directory path. Should be a `str`
-
-    Raises:
-        TypeError: `path_like` is not `str` or `os.PathLike` object
-        ValueError: `path_like` points to a file instead of a directory
+        path (str): Full name of blob e.g. `gs://bucket/folder/blob.txt`
 
     Returns:
-        Path: The directory path
+        tuple[str, str]: Bucket name, rest of the blob name
     """
-    dir_path = Path(path_like)
-    if dir_path.is_file():
-        raise ValueError(f"'{dir_path}' is a file, but a directory is required")
+    bucket, _, rest = path.removeprefix("gs://").partition("/")
+    return bucket, rest
 
-    if not dir_path.exists():
-        dir_path.mkdir(parents=True)
 
-    return dir_path
+def get_or_create_bucket(client: storage.Client, bucket_name: str) -> storage.Bucket:
+    """Get an existing bucket or create one if it doesn't exist.
+
+    Args:
+        client (storage.Client): Google Cloud Storeage client
+        bucket_name (str): Name of the bucket
+
+    Returns:
+        storage.Bucket: Bucket
+    """
+    try:
+        return client.get_bucket(bucket_name)
+    except gcp_exceptions.NotFound:
+        return client.create_bucket(bucket_name)
+
+
+async def copy_to_gcp(source: str | Path, destination: str) -> None:
+    """Copy local files to Google Cloud Storage (GCS). Copied files have the same names.
+
+    Args:
+        source (str | Path): Local source file or directory path
+        destination (str): Destination location on GCS. Should be bucket or folder (when copy
+        folder) or blob (when copy single file).
+    """
+    source = Path(source)
+
+    if not source.exists():
+        raise FileNotFoundError(source)
+
+    client = storage.Client()
+    bucket_name, rest_path = get_bucket_name(destination)
+    bucket = get_or_create_bucket(client, bucket_name)
+
+    if source.is_file():
+        bucket.blob(rest_path).upload_from_filename(source.as_posix())
+    elif source.is_dir():
+        filepaths = list(source.iterdir())
+
+        with ProgressBar() as bar:
+            copy_task_id = bar.add_task("Copying files", total=len(filepaths))
+            loop = asyncio.get_running_loop()
+
+            with ThreadPoolExecutor() as pool:
+                for filepaths_chunk in get_chunks(filepaths, 25):
+                    blobs = [
+                        bucket.blob(f"{rest_path}/{filepath.name}" if rest_path else filepath.name)
+                        for filepath in filepaths_chunk
+                    ]
+                    tasks = [
+                        loop.run_in_executor(pool, blob.upload_from_filename, filepath)
+                        for blob, filepath in zip(blobs, filepaths_chunk)
+                    ]
+
+                    # Don't consider errors from `tasks`.
+                    # await asyncio.gather(tasks, return_exceptions=True)
+                    try:
+                        await asyncio.gather(*tasks)
+                    except Exception as ex:
+                        raise KeyError(ex)
+
+                    bar.advance(copy_task_id, len(tasks))
+    else:
+        raise OSError("Only files and folders are supported")
+
+
+def check_if_gcs_object_exist(bucket_or_blob_uri: str, check_folder: bool = False) -> bool:
+    """Check if bucket, folder or blob exists at given GCS location.
+
+    Unlike a local file system, there are no 'folders' in GCS. The 'folder' can only exists
+    virtually when at least blob has it in it's name e.g.: 'gs://bucket/folder/blob.txt' there is a
+    'folder'.
+
+    Args:
+        bucket_or_blob_uri (str): GCS bucket or blob location. May contain 'gs://' prefix.
+        check_folder (bool, optional): Whether to check folder existance rather than blob. Defaults
+        to False.
+
+    Returns:
+        bool: `True` if bucket, folder or blob exists at given location, `False` otherwise.
+    """
+    bucket_name, rest_path = get_bucket_name(bucket_or_blob_uri)
+    client = storage.Client()
+
+    try:
+        bucket = client.get_bucket(bucket_name)
+    except gcp_exceptions.NotFound:
+        return False  # No bucket at all.
+
+    if rest_path:
+        if check_folder:
+            blobs = bucket.list_blobs(prefix=rest_path, max_results=1)
+            return bool(blobs)  # Folder exists if at least one blob has it in it's name.
+
+        return bucket.blob(rest_path).exists()  # type: ignore
+
+    return True  # `source` points directly to the bucket which we now exists.
