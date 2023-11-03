@@ -64,6 +64,8 @@ line-length = 100
 target-version = ["py311"]
 
 [tool.ruff]
+select = ["E", "F", "N", "I", "UP"]
+ignore = ["N818"]                   # Exception name should be named with an Error suffix
 line-length = 100
 target-version = "py311"
 
