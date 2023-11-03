@@ -1,7 +1,8 @@
 import abc
-from dataclasses import dataclass
+from collections.abc import Iterable, MutableMapping
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, MutableMapping, TypeAlias, TypedDict
+from typing import Any, Literal, TypeAlias, TypedDict
 from uuid import UUID
 
 import numpy as np
@@ -33,9 +34,10 @@ def flatten_dict(dct: MutableMapping[str, Any]) -> dict[str, Any]:
 @dataclass
 class PeriodicEvent:
     epoch: float
-    """Time of first observed transit-like event."""
     duration: float
     period: float
+    secondary_phase: float | None
+    """Secondary phase for secondary transit should be set to `None`."""
 
 
 class TceLabel(Enum):
@@ -48,6 +50,16 @@ class TceLabel(Enum):
 
     This should only be used when cannot determine whether TCE is AFP or NTP.
     """
+
+
+# Think about better mapping
+class LabeledTce(TypedDict):
+    label: TceLabel | int
+
+
+def change_tce_label_to_int(tce: LabeledTce) -> dict[str, Any]:
+    tce["label"] = 1 if tce["label"] == TceLabel.PC else 0
+    return tce  # type: ignore
 
 
 class RawKeplerTce(TypedDict):
@@ -65,6 +77,8 @@ class RawKeplerTce(TypedDict):
     tce_period: float
     kepler_name: str | None
     label: str
+    tce_maxmesd: float
+    wst_depth: float
 
 
 @dataclass
@@ -92,6 +106,7 @@ class KeplerTCE(TCE):
     radius: float
     fitted_period: float
     transit_depth: float
+    secondary_transit_depth: float
 
 
 @dataclass
@@ -122,12 +137,12 @@ class KeplerStellarParameters(StellarParameters):
 
 
 class RawKeplerTimeSeries(TypedDict):
-    id: int
-    period: int
-    time: list[float]
-    pdcsap_flux: list[float]
-    mom_centr1: list[float]
-    mom_centr2: list[float]
+    KEPLERID: int
+    QUARTER: int
+    TIME: list[float]
+    PDCSAP_FLUX: list[float]
+    MOM_CENTR1: list[float]
+    MOM_CENTR2: list[float]
 
 
 class TimeSeries(TypedDict):
@@ -140,3 +155,39 @@ class KeplerTimeSeries(TimeSeries):
     pdcsap_flux: Series
     mom_centr1: Series
     mom_centr2: Series
+
+
+NasaTableFormat = Literal["ascii", "pipe-delimited", "xml", "json", "csv"]
+
+
+@dataclass
+class NasaTableRequest:
+    """NASA API table request with optional filtering, selecting, ordering, etc.
+
+    See: https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html
+    """
+
+    name: str
+    columns: list[str] = field(default_factory=list)
+    query: str = ""
+    order: str = ""
+    format: NasaTableFormat = "csv"
+
+    def __post_init__(self) -> None:
+        self.order = self.order.strip()
+        self.query = self.query.strip()
+        self.name = self.name.strip()
+        self.columns = list(map(str.strip, self.columns))
+
+    @property
+    def query_string(self) -> str:
+        """URL query string that represents this request."""
+
+        url_parts = {
+            "table": self.name,
+            "format": self.format,
+            "where": self.query,
+            "order": self.order,
+            "select": ",".join(self.columns),
+        }
+        return "&".join(f"{k}={v}" for k, v in url_parts.items() if v)
