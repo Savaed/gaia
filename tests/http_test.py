@@ -1,5 +1,5 @@
 from enum import Enum
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import hypothesis.strategies as st
@@ -32,8 +32,10 @@ def aiohttp_error(
             return Exception(error_msg)
 
 
-@pytest.fixture(
-    params=[
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "http_error",
+    [
         (aiohttp_error(aiohttp.ClientOSError, 999), HttpMethod.GET),
         (aiohttp_error(aiohttp.ClientResponseError, 400), HttpMethod.GET),
         (aiohttp_error(aiohttp.ClientResponseError, 401), HttpMethod.GET),
@@ -48,19 +50,16 @@ def aiohttp_error(
         "http_404_not_found",
     ],
 )
-def error_response(request):
-    """Mock `aiohttp.ClientSession` HTTP method to raise an error (OS or client)."""
-    error, http_method = request.param
-    http_method_mock = MagicMock(**{"return_value.__aenter__.side_effect": error})
-    patch.object(aiohttp.ClientSession, http_method.value, http_method_mock)
-
-
-@pytest.mark.asyncio
-@pytest.mark.usefixtures("error_response")
-async def test_download__http_or_os_error():
+async def test_download__http_or_os_error(http_error):
     """Test check whether ApiError is raised for OS error or malformed request."""
+    error, method = http_error
+    response_mock = MagicMock(**{"read": AsyncMock(side_effect=error), "status": 400})
+    session_mock = MagicMock(
+        **{f"{method.value}.return_value.__aenter__.return_value": response_mock},
+        spec=aiohttp.ClientSession,
+    )
     with pytest.raises(ApiError):
-        await download(TEST_URL, aiohttp.ClientSession())
+        await download(TEST_URL, session_mock)
 
 
 @pytest.mark.asyncio
