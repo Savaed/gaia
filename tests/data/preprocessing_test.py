@@ -117,7 +117,7 @@ def test_split_arrays__invalid_time_or_series_dimensions(time, series):
 
 
 @pytest.mark.parametrize(
-    "X,Y,expected",
+    "xs,ys,expected",
     [
         (
             np.array([1, 2, 3, 4, 5]),
@@ -131,9 +131,9 @@ def test_split_arrays__invalid_time_or_series_dimensions(time, series):
         ),
     ],
 )
-def test_compute_euclidean_distance__return_correct_distance(X, Y, expected):
+def test_compute_euclidean_distance__return_correct_distance(xs, ys, expected):
     """Test that the Euclidean distance between an array of 2D points is calculated correctly."""
-    points = np.array([X, Y])
+    points = np.array([xs, ys])
     actual = compute_euclidean_distance(points)
     assert_array_almost_equal(actual, expected)
 
@@ -180,7 +180,7 @@ def test_normalize_median__invalid_data_dimension():
                 target_id=2,
                 name=None,
                 label=TceLabel.PC,
-                event=PeriodicEvent(epoch=1, duration=1, period=4),
+                event=PeriodicEvent(epoch=1, duration=1, period=4, secondary_phase=None),
             ),
             np.arange(10.0),
             np.array(["1", "1", "1", "no detected", "1", "1", "1", "no detected", "1", "1"]),
@@ -191,7 +191,7 @@ def test_normalize_median__invalid_data_dimension():
                 target_id=2,
                 name="tce-name",
                 label=TceLabel.PC,
-                event=PeriodicEvent(epoch=1, duration=1, period=4),
+                event=PeriodicEvent(epoch=1, duration=1, period=4, secondary_phase=None),
             ),
             np.arange(10.0),
             np.array(
@@ -220,7 +220,7 @@ def test_compute_transits__compute_correctly(tce, time, expected):
 
 def test_compute_transits__invalid_time_dimension():
     """Test that `InvalidDimensionError` is raised when `time` has dimension != 1D."""
-    tce = TCE(id=1, target_id=1, name="tce", label=TceLabel.PC, event=PeriodicEvent(1, 1, 1))
+    tce = TCE(id=1, target_id=1, name="tce", label=TceLabel.PC, event=PeriodicEvent(1, 1, 1, None))
     time = np.arange(10.0).reshape((2, 5))
     with pytest.raises(InvalidDimensionError):
         compute_transits([tce], time)
@@ -252,7 +252,7 @@ def three_duration(_, duration):  # Implementation of `EventWidthStrategy` for t
         (
             [np.arange(20)],
             [10 * np.arange(20)],
-            [PeriodicEvent(period=4, duration=1, epoch=3)],
+            [PeriodicEvent(period=4, duration=1, epoch=3, secondary_phase=None)],
             [np.array([1, 5, 9, 13, 17])],
             [np.array([10, 50, 90, 130, 170])],
         ),
@@ -260,8 +260,8 @@ def three_duration(_, duration):  # Implementation of `EventWidthStrategy` for t
             [np.arange(20)],
             [10 * np.arange(20)],
             [
-                PeriodicEvent(period=4, duration=1, epoch=3),
-                PeriodicEvent(period=7, duration=1, epoch=6),
+                PeriodicEvent(period=4, duration=1, epoch=3, secondary_phase=None),
+                PeriodicEvent(period=7, duration=1, epoch=6, secondary_phase=None),
             ],
             [np.array([1, 9, 17])],
             [np.array([10, 90, 170])],
@@ -270,8 +270,8 @@ def three_duration(_, duration):  # Implementation of `EventWidthStrategy` for t
             [np.arange(10), np.arange(10, 20)],
             [np.arange(0, 100, 10), np.arange(100, 200, 10)],
             [
-                PeriodicEvent(period=4, duration=1, epoch=3),
-                PeriodicEvent(period=7, duration=1, epoch=6),
+                PeriodicEvent(period=4, duration=1, epoch=3, secondary_phase=None),
+                PeriodicEvent(period=7, duration=1, epoch=6, secondary_phase=None),
             ],
             [np.array([1, 9]), np.array([17])],
             [np.array([10, 90]), np.array([170])],
@@ -299,7 +299,7 @@ def test_remove_events__remove_events_correctly(
             True,
             [np.arange(5), np.arange(10, 20)],
             [np.arange(0, 50, 10), np.arange(100, 200, 10)],
-            [PeriodicEvent(period=10, duration=2, epoch=2.5)],
+            [PeriodicEvent(period=10, duration=2, epoch=2.5, secondary_phase=None)],
             [np.array([]), np.array([16, 17, 18, 19])],
             [np.array([]), np.array([160, 170, 180, 190])],
         ),
@@ -307,7 +307,7 @@ def test_remove_events__remove_events_correctly(
             False,
             [np.arange(5), np.arange(10, 20)],
             [np.arange(0, 50, 10), np.arange(100, 200, 10)],
-            [PeriodicEvent(period=10, duration=2, epoch=2.5)],
+            [PeriodicEvent(period=10, duration=2, epoch=2.5, secondary_phase=None)],
             [np.array([16, 17, 18, 19])],
             [np.array([160, 170, 180, 190])],
         ),
@@ -338,7 +338,7 @@ def test_remove_events__handle_empty_segments(
     "time,series,events",
     [
         ([np.arange(5)], [np.arange(5)], []),
-        ([np.arange(5), np.arange(5)], [np.arange(5)], [PeriodicEvent(1, 1, 1)]),
+        ([np.arange(5), np.arange(5)], [np.arange(5)], [PeriodicEvent(1, 1, 1, None)]),
     ],
     ids=["no_events_provided", "different_time_and_series_lenghts"],
 )
@@ -352,7 +352,7 @@ def test_remove_events__invalid_data_dimension():
     """Test that `InvalidDimensionError` is raised when any of inputs is invalid."""
     time = [np.arange(10.0).reshape((2, 5))]
     series = [np.arange(5.0)]
-    events = [PeriodicEvent(1, 1, 1)]
+    events = [PeriodicEvent(1, 1, 1, None)]
     with pytest.raises(InvalidDimensionError):
         remove_events(time, events, series, three_duration)
 
