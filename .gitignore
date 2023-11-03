@@ -7,8 +7,10 @@
 .tox/
 .vscode/
 coverage*
-data/
-!gaia/data/
+data/*
+!gaia/data
+!tests/data
+docs/
 htmlcov/
 logs/
 outputs/
