@@ -1,20 +1,148 @@
-defaults:
-  - kepler_local
+# @package _global_
 
-spark:
-  cache_input_data: false
+# defaults:
+#   - override /data: kepler_gcp
 
-test_size: 0.1
-validation_size: 0.1
+create_features:
+  script_description: |
+    Run PySpark on Google Dataproc Serverless using custom Docker container image.
 
-dataproc:
-  subnetwork_uri: default
-  main_script_uri: ${create_features.script_path}
-  region: europe-central2
-  runtime_config:
-    container_image: europe-central2-docker.pkg.dev/neon-fort-351812/test/test-dataproc:latest
-    version: "2.1"
-    properties:
-      spark:spark.executor.cores: "4"
-      spark:spark.driver.cores: "4"
-      spark:spark.executor.instances: "2"
+    See https://cloud.google.com/dataproc-serverless/docs/overview for more about Dataproc
+    Serverless.
+  spark:
+    app_name: test-gaia
+    cache_input_data: false
+    config_properties: {}
+  script_path: /home/krzysiek/projects/gaia/gaia/scripts/create_features.py
+  seed: 42
+  shuffle_dataset: true
+  test_size: 0.1
+  validation_size: 0.1
+  tce_target_id_column: target_id
+  stellar_params_target_id_column: id
+  tce_excluded_columns:
+    - label
+    - name
+    - id
+    - target_id
+  stellar_params_excluded_columns:
+    - id
+  sigma_cut: 20
+  tce_key_by:
+    - target_id
+    - id
+  stellar_params_key_by:
+    - id
+  time_series_id_key: id
+  time_key: time
+  flux_key: pdcsap_flux
+  centroid_x_key: mom_centr1
+  centroid_y_key: mom_centr2
+  output: ${data.final_path}
+  flatten_func:
+    _target_: gaia.spark.remove_time_series_noise
+    _partial_: true
+    gap: 0.75
+    include_empty_segments: true
+    spline:
+      _target_: gaia.data.preprocessing.Spline
+      knots_spacing: # np.logspace(np.log10(0.5), np.log10(20), num=20)
+        [
+          0.5,
+          0.60714015,
+          0.73723832,
+          0.89521396,
+          1.08704067,
+          1.31997206,
+          1.60281606,
+          1.94626796,
+          2.36331483,
+          2.86972662,
+          3.48465248,
+          4.23134484,
+          5.13803866,
+          6.23901909,
+          7.57591793,
+          9.19928784,
+          11.17051394,
+          13.56413495,
+          16.47066176,
+          20.0,
+        ]
+      k: 3
+      max_iter: 5
+      sigma_cut: 3.0
+      penalty_coeff: 1.0
+  generate_local_view_func:
+    _target_: gaia.spark.generate_view
+    _partial_: true
+    num_bins: 31
+    time_boundaries_func:
+      _target_: gaia.data.preprocessing.compute_local_view_time_boundaries
+      _partial_: true
+      num_durations: 2.5
+    bin_width_func:
+      _target_: gaia.data.preprocessing.compute_local_view_bin_width
+      _partial_: true
+      bin_width_factor: 0.16
+    bin_func:
+      _target_: gaia.data.preprocessing.create_bins
+      _partial_: true
+    aggregate_func:
+      _target_: numpy.nanmedian
+      _partial_: true
+    default:
+      _target_: numpy.nanmedian
+      _partial_: true
+  generate_global_view_func:
+    _target_: gaia.spark.generate_view
+    _partial_: true
+    num_bins: 301
+    time_boundaries_func:
+      _target_: gaia.data.preprocessing.compute_global_view_time_boundaries
+      _partial_: true
+    bin_width_func:
+      _target_: gaia.data.preprocessing.compute_global_view_bin_width
+      _partial_: true
+      num_bins: ${create_features.generate_global_view_func.num_bins}
+      bin_width_factor: 0.16
+    bin_func:
+      _target_: gaia.data.preprocessing.create_bins
+      _partial_: true
+    aggregate_func:
+      _target_: numpy.nanmedian
+      _partial_: true
+    default:
+      _target_: numpy.nanmedian
+      _partial_: true
+  tce_source: ${data.interim_tce_filepath}
+  stellar_params_source: ${data.interim_stellar_params_filepath}
+  time_series_source: ${data.interim_time_series_path}
+  tce_mapper:
+    _target_: gaia.data.mappers.map_kepler_tce
+    _partial_: true
+  stellar_params_mapper:
+    _target_: gaia.data.mappers.map_kepler_stallar_parameters
+    _partial_: true
+  time_series_mapper:
+    _target_: gaia.data.mappers.map_kepler_time_series
+    _partial_: true
+  input_format: parquet
+  output_format: tfrecord
+  partition_by:
+    - id
+  dataproc:
+    execution_config:
+      subnetwork_uri: default
+      staging_bucket: gaia-spark
+    main_script_uri: ${create_features.script_path}
+    config_dir: configs/
+    region: europe-central2
+    runtime_config:
+      container_image: europe-central2-docker.pkg.dev/neon-fort-351812/test/test-dataproc:latest
+      version: "2.1"
+      properties:
+        spark.executor.cores: "4"
+        spark.driver.cores: "4"
+        spark.executor.instances: "2"
+        spark.jars.packages: com.linkedin.sparktfrecord:spark-tfrecord_2.12:0.6.1

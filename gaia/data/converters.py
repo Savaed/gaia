@@ -1,14 +1,17 @@
 import asyncio
 import glob
 import json
+import os
 import re
 from collections import defaultdict
+from collections.abc import AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import AsyncGenerator, Pattern, TypeAlias
+from re import Pattern
+from typing import Protocol, TypeAlias
 
 import duckdb
 from rich.status import Status
@@ -32,16 +35,24 @@ class ConverterError(Exception):
     """Raised when there is a generic converting error."""
 
 
+class Converter(Protocol):
+    def convert(self, inputs: PathOrPattern, output: Path | str) -> None:
+        ...
+
+
+class AsyncConverter(Protocol):
+    async def convert(self, inputs: PathOrPattern, output: Path | str) -> None:
+        ...
+
+
 class CsvConverter:
     _SUPPORTED_OUTPUT_FILES = (".json", ".parquet")
     _TMP_TABLE = "tmp"
 
-    def convert(
-        self,
-        inputs: PathOrPattern,
-        output: Path | str,
-        include_columns: Columns | None = None,
-    ) -> None:
+    def __init__(self, include_columns: Columns | None = None) -> None:
+        self._include_columns = include_columns
+
+    def convert(self, inputs: PathOrPattern, output: Path | str) -> None:
         """Convert a csv file to json or parquet format.
 
         Args:
@@ -64,7 +75,7 @@ class CsvConverter:
 
         self._validate_input_files(input_filepaths)
         connection = duckdb.connect(":memory:")
-        self._create_tmp_table(inputs, include_columns, connection)
+        self._create_tmp_table(inputs, connection)
 
         copy_args = DUCKDB_COPY_ARGS.get(output.suffix, ";")
         connection.execute(f"COPY {self._TMP_TABLE} TO '{output}' {copy_args}")
@@ -74,19 +85,16 @@ class CsvConverter:
     def _create_tmp_table(
         self,
         inputs: PathOrPattern,
-        include_columns: Columns | None,
         connection: duckdb.DuckDBPyConnection,
     ) -> None:
-        columns = ",".join(include_columns) if include_columns else "*"
+        columns = ",".join(self._include_columns) if self._include_columns else "*"
         try:
             connection.execute(
                 f"CREATE TABLE {self._TMP_TABLE} AS SELECT {columns} FROM '{inputs}';",
             )
         except duckdb.BinderException as ex:
             column = re.search(r'(?<=column )"\w*', str(ex)).group()  # type: ignore
-            raise ValueError(
-                f"{column} specified in 'include_columns' parameter not found in the source CSV {inputs}",  # noqa
-            )
+            raise ValueError(f"{column=} not found in the source CSV {inputs=}")
 
     def _validate_output_file(self, output: Path) -> None:
         if output.suffix not in self._SUPPORTED_OUTPUT_FILES:
@@ -114,6 +122,8 @@ class FitsConvertingSettings:
     """Data columns to read."""
     meta_columns: Columns | None
     """Metadata columns to read"""
+    path_target_id_pattern: Pattern[str]
+    """Regex pattern for extracting an object ID from a file path"""
     output_format: FitsConvertingOutputFormat
 
 
@@ -126,40 +136,33 @@ class FitsConverter:
     def __init__(self, settings: FitsConvertingSettings) -> None:
         self._settings = settings
         self._processed_ids: list[Id] = []
-        base_path = Path().cwd() / self.__class__.__name__
+        base_path = Path.cwd() / self.__class__.__name__
         self._checkpoint_filepath = Path(f"{base_path}_checkpoint.txt")
-        self._tmp_time_series_path = "tmp.json"
-
+        self._buffor_filepath = Path("tmp.json")
         self._copy_params = {
             FitsConvertingOutputFormat.JSON: "",
             FitsConvertingOutputFormat.PARQUET: "(COMPRESSION ZSTD)",
         }
 
-    async def convert(
-        self,
-        inputs: PathOrPattern,
-        output_dir: Path | str,
-        path_target_id_pattern: Pattern[str] | str,
-    ) -> None:
+    async def convert(self, inputs: PathOrPattern, output: Path | str) -> None:
         """Convert FITS time series files to json or parquet format.
 
         Files for which the target ID cannot be retrieved are skipped. All individual files for the
         same target ID will be saved as single output file. This method resumes the conversion from
         the previous point after any failure based on the checkpoint file.
 
+        Args:
+            inputs (PathOrPattern): File path or regular expression to input file(s)
+            output (Path | str): Output directory (it will be created if not exist)
+
         Raises:
             FileNotFoundError: Input file not found if passed a single file path as a Path object
             ConverterError: Cannot read FITS files (invalid file/header/columns) OR cannot save
             converted files
             CancelledError: Task has been cancelled
-
-        Args:
-            inputs (PathOrPattern): File path or regular expression to input file(s)
-            output_directory (path): Output directory (it will be created if not exist)
-            path_target_id_pattern (Pattern[str]): Regex to retrieve target id from file paths
         """
-        async with self._save_processed_ids():
-            await self._convert(inputs, Path(output_dir), re.compile(path_target_id_pattern))
+        async with self._handle_tmp_files():
+            await self._convert(inputs, Path(output), self._settings.path_target_id_pattern)
 
     async def _convert(
         self,
@@ -204,7 +207,7 @@ class FitsConverter:
         for series in time_series:
             tmp_series.append(series)
 
-        with open(self._tmp_time_series_path, "w") as f:
+        with open(self._buffor_filepath, "w") as f:
             json.dump(tmp_series, f, cls=JsonNumpyEncoder)
 
         output_path, copy_params = self._get_output_params(target_id, output_dir)
@@ -218,7 +221,7 @@ class FitsConverter:
             f"""COPY
             (
                 FROM read_json_auto(
-                    '{self._tmp_time_series_path}',
+                    '{self._buffor_filepath.as_posix()}',
                     maximum_object_size=10485760) -- 10MB
             )
             TO '{output_path}' {copy_params};""",
@@ -249,7 +252,7 @@ class FitsConverter:
                 )
                 for path in paths
             ]
-            return await asyncio.gather(*tasks)
+            return asyncio.gather(*tasks)
         except asyncio.CancelledError:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -290,10 +293,13 @@ class FitsConverter:
         return files_count, paths
 
     @asynccontextmanager
-    async def _save_processed_ids(self) -> AsyncGenerator[None, None]:
+    async def _handle_tmp_files(self) -> AsyncGenerator[None, None]:
         try:
             yield
         finally:
+            if self._buffor_filepath.exists():
+                os.remove(self._buffor_filepath)
+
             if self._processed_ids:
                 ids = [str(id) + "\n" for id in self._processed_ids]
                 with open(self._checkpoint_filepath, "a") as f:

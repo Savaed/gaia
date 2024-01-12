@@ -28,8 +28,8 @@ async def main(cfg: AppConfig) -> int:
 
     downloader: RestDownloader = hydra.utils.instantiate(cfg.download.downloader)
     try:
-        if cfg.download.download_tables:
-            await downloader.download_tables(cfg.download.tables)
+        # if cfg.download.download_tables:
+        #     await downloader.download_tables(cfg.download.tables)
         if cfg.download.download_time_series:
             ids = get_target_ids(cfg.download.tce_target_id_column, cfg.download.tce_filepath)
             await downloader.download_time_series(ids)

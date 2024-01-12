@@ -1,3 +1,4 @@
+import os
 from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -201,16 +202,43 @@ GCPRegion = Literal[
 ]
 
 
-class RuntimeConfig(BaseModel):
+class RuntimeConfig(ImmutableBaseModel):
     container_image: str
     version: str
     properties: dict[str, str] = Field(default_factory=dict)
 
 
-class DataprocServerlessConfig(BaseModel):
+# def ensure_full_gcs_path(bucket: str) -> str:
+#     if not bucket.startswith("gs://"):
+#         raise ValueError(
+#             f"Expected full bucket name, but got {bucket=}. Use 'gs://{bucket.strip('/')}' instead"
+#         )
+
+#     return bucket
+
+
+class ExecutionConfig(ImmutableBaseModel):
+    subnetwork_uri: NonEmptyString
+    staging_bucket: NonEmptyString
+
+
+def check_if_local_file_exists(path: Path) -> Path:
+    # Do not check this assumption on GCP.
+    # 'DATAPROC_SERVERLESS_ENVIRONMENT' is set via Dockerfile and presents only on GCP.
+    if not os.getenv("DATAPROC_SERVERLESS_ENVIRONMENT") and not path.is_file():
+        raise ValueError(f"{path=} not points to the file")
+
+    return path
+
+
+LocalFilePath = Annotated[Path, AfterValidator(check_if_local_file_exists)]
+
+
+class DataprocServerlessConfig(ImmutableBaseModel):
+    config_dir: str
     runtime_config: RuntimeConfig
-    subnetwork_uri: str
-    main_script_uri: str
+    execution_config: ExecutionConfig
+    main_script_uri: LocalFilePath
     region: GCPRegion
 
 
@@ -227,7 +255,8 @@ class SparkConfig(ImmutableBaseModel):
 class CreateFeaturesConfig(ImmutableBaseModel):
     script_description: NonEmptyString
     spark: SparkConfig
-    script_path: FilePath
+    # This file will be not presents on GCP. It is only to run locally.
+    script_path: LocalFilePath
     seed: PositiveInt
     shuffle_dataset: bool
     test_size: Annotated[float, Field(gt=0, le=1)]

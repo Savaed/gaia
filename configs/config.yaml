@@ -1,12 +1,13 @@
 defaults:
   - _self_
 
-  - data: kepler_local
+  - data: kepler_gcp
   - data_providers: kepler_local
   - download: kepler
   - preprocess_data: kepler
   - ui: local
-  - create_features: kepler_local
+  # - create_features: kepler_local
+  - create_features: kepler_gcp
 
   - override hydra/job_logging: none
   - override hydra/hydra_logging: none

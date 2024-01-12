@@ -1,6 +1,6 @@
-FROM python:3.11.5-bullseye as builder
+FROM python:3.11.6-bullseye as builder
 
-ARG POETRY_VERSIONS=1.6.1
+ARG POETRY_VERSIONS=1.7.1
 
 RUN pip install poetry==${POETRY_VERSIONS}
 
@@ -15,7 +15,7 @@ COPY pyproject.toml poetry.lock ./
 RUN touch README.md
 RUN --mount=type=cache,target=${POETRY_CACHE_DIR} poetry install --only main --no-root
 
-FROM python:3.11.5-slim-bullseye as runtime
+FROM python:3.11.6-slim-bullseye as runtime
 
 ARG VIRTUAL_ENVIRONMENT=/app/.venv
 
@@ -24,7 +24,10 @@ ENV VIRTUAL_ENV=${VIRTUAL_ENVIRONMENT} \
     PATH=${VIRTUAL_ENVIRONMENT}/bin:${PATH} \
     PYTHONPATH=/app
 
-# (Required) Install packages spark uses to run
+# Use this env to check if code is run on GCP.
+ENV DATAPROC_SERVERLESS_ENVIRONMENT=1
+
+# (Required) Install packages spark uses to run.
 RUN apt update && apt install --yes procps tini
 
 COPY --from=builder ${VIRTUAL_ENVIRONMENT} ${VIRTUAL_ENVIRONMENT}

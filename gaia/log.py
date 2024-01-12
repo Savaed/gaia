@@ -31,5 +31,5 @@ logger.add(
     colorize=True,
     backtrace=True,
     diagnose=True,
-    level=LoggingLevel.DEBUG.value,
+    level=LoggingLevel.INFO.value,
 )

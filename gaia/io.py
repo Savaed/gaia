@@ -297,7 +297,7 @@ async def copy_to_gcp(source: str | Path, destination: str) -> None:
     if source.is_file():
         bucket.blob(rest_path).upload_from_filename(source.as_posix())
     elif source.is_dir():
-        filepaths = list(source.iterdir())
+        filepaths = [path for path in source.rglob("*") if not path.is_dir()]  # Filter out dirs
 
         with ProgressBar() as bar:
             copy_task_id = bar.add_task("Copying files", total=len(filepaths))
@@ -306,7 +306,7 @@ async def copy_to_gcp(source: str | Path, destination: str) -> None:
             with ThreadPoolExecutor() as pool:
                 for filepaths_chunk in get_chunks(filepaths, 25):
                     blobs = [
-                        bucket.blob(f"{rest_path}/{filepath.name}" if rest_path else filepath.name)
+                        bucket.blob(f"{rest_path}/{filepath}" if rest_path else filepath.as_posix())
                         for filepath in filepaths_chunk
                     ]
                     tasks = [
