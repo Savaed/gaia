@@ -14,7 +14,6 @@
 
 > **GAIA allows the downloading, processing and visualisation of stellar brightness time series and stellar parameters from missions such as Kepler/K2 or TESS. A separate module allows the training of deep learning models and the detection of exoplanet candidates. The whole system can be run locally or partially on the Google Cloud Platform.**
 
-
 ## How it works
 
 ![Stellar transit](https://github.com/Savaed/gaia/blob/main/docs/img/nasa-transit.gif)
@@ -36,27 +35,27 @@ Other data processing steps include standardisation of time series and stellar p
 
 Raw Kepler time series downloaded from the MAST archive contain observations divided into several periods (quarters).
 
-XXX
-<p align="center">Figure. 2. *Raw light curves for Kepler-90 system. Data observed over entire mission - about 4 years.*</p>
+![kepler full mission light curve](https://github.com/Savaed/gaia/blob/main/docs/img/kepler-90-full-mission.png)
+<p align="center">Figure. 2. Raw light curves for Kepler-90 system. Data observed over entire mission - about 4 years.</p>
 
 Fig. 2. clearly shows the transits of two planets: Kepler-90 h - the largest planet in the system with the greatest transit depth, and Kepler-90 g - the second largest planet in size and transit depth.
 
-XXX
+![kepler full quarter 4 light curve](https://github.com/Savaed/gaia/blob/main/docs/img/kepler-90-q4.png)
 <p align="center">Figure. 3. Raw light curves for Kepler-90 g transit</p>
 
 It can be noticed that the brightness of the star even far away from transits is not constant - brightness fluctuations result from the natural variability of the observed star. This small variability significantly complicates exoplanet detection and must therefore be removed. In order to remove noise a normalization curve is fitted for each series and the transits are interpolated linearly. Such interpolation allows the curve to be fitted only to noise without removing any changes caused by planets or other objects. An example of the described fitting is shown in Fig. 4.
 
-XXX
+![kepler normalization](https://github.com/Savaed/gaia/blob/main/docs/img/kepler-90-q4-normalization.png)
 <p align="center">Figure. 4. Normalization curve for Kepler-90 g light curve segment. Transit is linearly interpolated</p>
 
 Then the original series is divided by the normalization curve. The result of such an operation is a light curve with noise removed and transits preserved, as shown in Fig. 5.
 
-XXX
+![kepler normalized](https://github.com/Savaed/gaia/blob/main/docs/img/kepler-90-q4-flattened.png)
 <p align="center">Figure. 5. Flettened light curve for Kepler-90 g light curve segment</p>
 
 The final stage of processing is the creation of views, global and local. Both are *phase-folded*, which means that all periods of the detected TCE are combined into one curve in which the detected event is centered and values are averged.
 
-XXX
+![kepler views](https://github.com/Savaed/gaia/blob/main/docs/img/kepler-90-views.png)
 <p align="center">Figure. 6. Global light curve view (left) and local view (right) for Kepler-90 g.</p>
 
 Centroid series are processed in a similar way, but only a local and global view is created for them. Even and odd transits are extracted from the normalized curves and local views of star brightness are created from them. A local view is also created for the second transit brightness.
@@ -65,10 +64,28 @@ Centroid series are processed in a similar way, but only a local and global view
 
 ## Main modules
 
+GAIA as a whole system consists of several modules - some of them responsible for various operations such as data downloading, processing or visualization.
+
 ### Easy download data
+
+GAIA allows for efficient downloading of stellar time series, TCE skalar values and stellar parameters. The script includes a mechanism to retry the download when an error occurs. The downloaded data is automatically saved in the specified local location as `.FITS` files.
+
+To download data run following script from top level directory:
+
+```sh
+python -m gaia.scripts.download_data
+```
 
 ### Dashborad and visualizations
 
+The interactive visualization module allows for graphical representation of both TCE and stellar scalar data as well as stellar time series. Implemented as a website, the module provides filtering and basic operations on charts (zooming in, selecting observations, etc.). To open dashboard web page run:
+
+```sh
+python -m gaia.scripts.run_dashboard
+```
+
 ### Data processing
+
+Data processing implemented in the form of the PySpark processing pipeline allows the transformation of raw data into .TFRECORDS files. During the operation, the following are performed: removing noise from the brightness and centroid time series, creating appropriate local and global views, dividing the data into training, validation and test sets, normalizing observations.
 
 ### Deep learning models
