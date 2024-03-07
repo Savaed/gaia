@@ -56,7 +56,7 @@ Centroid series are processed in a similar way, but only a local and global view
 
 ## General system architecture
 
-![gaia system architecture](https://github.com/Savaed/gaia/blob/main/docs/img/gaia_system_architecture_and_data_flow.png.png)
+![gaia system architecture](https://github.com/Savaed/gaia/blob/main/docs/img/gaia_system_architecture_and_data_flow.png)
 
 ## Main modules
 
