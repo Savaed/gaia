@@ -58,30 +58,52 @@ Centroid series are processed in a similar way, but only a local and global view
 
 ![gaia system architecture](https://github.com/Savaed/gaia/blob/main/docs/img/gaia_system_architecture_and_data_flow.png)
 
-## Main modules
+## How to
 
-GAIA as a whole system consists of several modules - some of them responsible for various operations such as data downloading, processing or visualization.
+### Download data
 
-### Data downloading
-
-GAIA allows for efficient downloading of stellar time series, TCE scalar values and stellar parameters. The script includes a mechanism to retry the download when an error occurs. The downloaded data is automatically saved in the specified local location as `.FITS` files.
-
-To download data run following script from top level directory:
+GAIA allows for efficient (asynchronous) downloading of stellar time series, TCE scalar values and stellar parameters from official [NASA](https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html) and [MAST](https://archive.stsci.edu/missions-and-data/kepler/kepler-bulk-downloadsnasa) archives via REST API. The script implements mechanisms to retry the download after error occures and allows to stop and resume at any time without losing download progress. The downloaded data is automatically saved in the specified local location as `.fits` files.
+To download data locally, run following script from top level directory:
 
 ```sh
 $ python -m gaia.scripts.download_data
 ```
 
-### Dashborad and visualizations
+> **NOTE** The amount of data is significant (approx. 280 000 files, 120GB).
 
-The interactive visualization module allows for graphical representation of both TCE and stellar scalar data as well as stellar time series. Implemented as a website, the module provides filtering and basic operations on charts (zooming in, selecting observations, etc.). To open dashboard web page run:
+### Preprocess data
+
+Data preprocessing allows to extract relevant information from raw files and, in the case of *TCE*, to combine values ​​from several sources into one file. It also changes the data format to one that is easier to further process (default to `.parquet`). The size of the data is also reduced (from 120GB to over 20GB). To preprocess raw data locally run:
+
+```sh
+$ python -m gaia.scripts.preprocess_data
+```
+
+### Visualize data
+
+The interactive visualizations allow for graphical representation of both *TCE* and stellar scalar data as well as stellar time series. Implemented as a website, the dashboard provides basic operations on charts (filters, zooming, moving plots, selecting specific observations, etc.). To open dashboard web page on *localhost* run:
 
 ```sh
 $ python -m gaia.scripts.run_dashboard
 ```
 
-### Data processing
+> **NOTE** For the dashboard to work properly, it is **required to pre-process the data** and change it format from `.fits` to `.parquet` using the `preprocess_data.py` script.
 
-Data processing implemented in the form of the PySpark processing pipeline allows the transformation of raw data into .TFRECORDS files. During the operation, the following are performed: removing noise from the brightness and centroid time series, creating appropriate local and global views, dividing the data into training, validation and test sets, normalizing observations.
+### Create final features
 
-### Deep learning models
+Data processing implemented as a PySpark pipeline allows to transform interim data into final features that can be used to train deep learning models. The final data is in the format `.tfrecords`. This operation includes: removing noise from light curves, creating appropriate local and global views, spliting the data into training, validation and test sets, normalizing observations. To create features locally run:
+
+```sh
+$ python -m gaia.scripts.create_features
+```
+
+or
+
+
+```sh
+$ python -m gaia.scripts.submit_spark_create_features_job
+```
+
+### Fit deep learning models
+
+**Not implemented yet.**
