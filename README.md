@@ -60,6 +60,22 @@ Centroid series are processed in a similar way, but only a local and global view
 
 ## How to
 
+To run this project locally ensure you have **Python 3.11 or newer** installed on your machine:
+```sh
+$ python --version
+# Python 3.11.8
+```
+
+Then install [poetry](https://python-poetry.org/) and optionally [tox](https://tox.wiki/en/stable/):
+  ```
+  $ pip install tox poetry
+  ```
+
+Install project dependencies:
+```
+$ poetry install
+```
+
 ### Download data
 
 GAIA allows for efficient (asynchronous) downloading of stellar time series, TCE scalar values and stellar parameters from official [NASA](https://exoplanetarchive.ipac.caltech.edu/docs/program_interfaces.html) and [MAST](https://archive.stsci.edu/missions-and-data/kepler/kepler-bulk-downloadsnasa) archives via REST API. The script implements mechanisms to retry the download after error occures and allows to stop and resume at any time without losing download progress. The downloaded data is automatically saved in the specified local location as `.fits` files.
@@ -99,7 +115,6 @@ $ python -m gaia.scripts.create_features
 
 or
 
-
 ```sh
 $ python -m gaia.scripts.submit_spark_create_features_job
 ```
@@ -107,3 +122,48 @@ $ python -m gaia.scripts.submit_spark_create_features_job
 ### Fit deep learning models
 
 **Not implemented yet.**
+
+## Step-by-step GCP guide
+
+Make sure you have Docker installed on your machine: `docker --version`.
+
+To run part of this project on [Google Cloud Platform (GCP)](https://cloud.google.com/?hl=en), the following steps are required:
+
+  1. Install [gcloud](https://cloud.google.com/sdk/docs/install).
+
+  2. Create a new GCP project or select exiting one:
+  ```
+  $ gcloud init
+  ```
+
+  3. Set up local Application Default Credentials (*ADC*) and create a credential JSON file:
+  ```
+  $ gcloud auth application-default login
+  ```
+  Learn more about *ADC* [here](https://cloud.google.com/docs/authentication/application-default-credentials) and [here](https://cloud.google.com/docs/authentication/provide-credentials-adc).
+
+  4. Set up `GOOGLE_APPLICATION_CREDENTIALS` environment variable to provide the location of a credential JSON file. This environment variable is used by GCP Python Client Libraries to communicate with GCP services.
+  5. [Enable billing](https://cloud.google.com/billing/docs/how-to/modify-project#enable_billing_for_a_project) for a selected project.
+  6. Enable *Service Usage API*.
+  7. For data storage enable *Google Cloud Storage API*.
+  8. For PySpark data processing enable *Google Cloud Dataproc API*.
+  9. For DL models training enable *Google Cloud Vertex AI API*.
+  10. For PySpark and DL models custom containers enable *Artifact Registry API*.
+  11. Configure Docker to use the Google Cloud CLI to authenticate requests to Artifact Registry in specified region (e.g. *europe-central2*):
+  ```sh
+  $ gcloud auth configure-docker europe-central2-docker.pkg.dev
+  ```
+
+  or add following lines to local Docker config (default location is `~/.docker/config.json`):
+  ```json
+  "credHelpers": {
+    "europe-central2-docker.pkg.dev": "gcloud"
+  }
+  ```
+  12. [Create](https://cloud.google.com/artifact-registry/docs/docker/store-docker-container-images) Artifact Registry container repository.
+  13. Build and push Docker image. The Docker image name **MUST** have a format `{region}-docker.pkg.dev/{GCP_project_ID}/{repo}/{image_name}:{tag}` e.g.:
+  ```sh
+  docker build -t europe-central2-docker.pkg.dev/project-132/test/test-dataproc:tag1 . \
+  docker push europe-central2-docker.pkg.dev/project-132/test/test-dataproc:tag1
+  ```
+  14. Change [Dataproc config](https://github.com/Savaed/gaia/blob/26724d3576ba63355867c76ecc3115ddd973cadb/configs/create_features/kepler_gcp.yaml#L134C1-L134C12) in `gaia/configs/create_features/kepler_gcp.yaml` to use your image.
