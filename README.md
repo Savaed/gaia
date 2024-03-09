@@ -87,6 +87,8 @@ $ python -m gaia.scripts.download_data
 
 > **NOTE** The amount of data is significant (approx. 280 000 files, 120GB).
 
+https://github.com/Savaed/gaia/assets/36476874/14b43dd6-4f41-4937-a18d-f6117a87c2e5
+
 ### Preprocess data
 
 Data preprocessing allows to extract relevant information from raw files and, in the case of *TCE*, to combine values ​​from several sources into one file. It also changes the data format to one that is easier to further process (default to `.parquet`). The size of the data is also reduced (from 120GB to over 20GB). To preprocess raw data locally run:
@@ -104,6 +106,8 @@ $ python -m gaia.scripts.run_dashboard
 ```
 
 > **NOTE** For the dashboard to work properly, it is **required to pre-process the data** and change it format from `.fits` to `.parquet` using the `preprocess_data.py` script.
+
+https://github.com/Savaed/gaia/assets/36476874/7f68e17c-70e1-488d-8898-1420b1679680
 
 ### Create final features
 
